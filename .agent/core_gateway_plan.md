@@ -372,6 +372,71 @@ Every handler needs to write JSON errors. Without these helpers, each handler wo
 
 > **Goal:** Define the contract every provider must implement, and a registry that maps model names to providers.
 
+### Why a Registry?
+
+Every request to your gateway includes a `model` field (e.g. `"gpt-4o"`, `"claude-3.5-sonnet"`, `"gemini-pro"`). The gateway must answer one question on every request: **which provider handles this model?**
+
+#### The Problem
+
+Without a registry, you'd need to hardcode routing logic directly in your HTTP handlers:
+
+```go
+// ❌ BAD — handler is coupled to every provider
+if strings.HasPrefix(model, "gpt-") {
+    return openaiClient.ChatCompletion(...)
+} else if strings.HasPrefix(model, "claude-") {
+    return anthropicClient.ChatCompletion(...)
+} else if ...
+```
+
+This breaks down because:
+- **Adding a provider** requires editing handler code (violates Open/Closed principle)
+- **Multiple handlers** (chat, models, health) would all repeat this logic
+- **No support for explicit provider overrides** (e.g. custom fine-tuned models with non-standard names)
+- **Not thread-safe** if you ever want to register/deregister providers at runtime
+
+#### How the Registry Solves This
+
+The registry is a centralized, thread-safe **lookup table** that maps model names to providers using two resolution strategies (in priority order):
+
+1. **Explicit override** — If the request includes `"provider": "openai"`, the registry looks up the provider by name directly. This handles custom/fine-tuned models with non-standard names.
+2. **Prefix matching** — The registry checks if the model name starts with a known prefix (`"gpt-"` → OpenAI, `"claude-"` → Anthropic, etc.). First match wins.
+
+This means the handler code becomes trivially simple:
+
+```go
+// ✅ GOOD — handler is decoupled from providers
+p, err := registry.Resolve(req.Model, req.Provider)
+p.ChatCompletion(ctx, req)
+```
+
+#### Why Not Simpler Alternatives?
+
+| Approach | Why It's Not Enough |
+|---|---|
+| Hardcoded `if/else` in handlers | Adding a provider means editing every handler. Logic is duplicated. |
+| Simple `map[string]Provider` in `main.go` | Only supports exact model name matches, not prefix-based routing. No explicit overrides. |
+| Config file mapping | Still needs code to do the lookup — you end up building a registry anyway. |
+| **Registry struct** ✅ | Centralized, thread-safe (`sync.RWMutex`), supports both prefix routing and explicit overrides, provides `ListAll()` for aggregating models. |
+
+#### Architecture Flow
+
+```
+Client Request
+    ↓
+Handler: "model = gpt-4o, who handles this?"
+    ↓
+Registry.Resolve("gpt-4o", "")
+    ↓ prefix match: "gpt-" → OpenAI
+OpenAI Provider
+    ↓
+OpenAI API → Response → Client
+```
+
+The registry is **written once at startup** (when `main.go` registers providers) and **read on every request** — a classic read-heavy pattern perfectly suited for `sync.RWMutex`, which allows unlimited concurrent reads without blocking.
+
+---
+
 ### [NEW] `internal/provider/provider.go`
 
 ```go
