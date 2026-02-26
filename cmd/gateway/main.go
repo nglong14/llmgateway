@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -12,9 +11,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
 	"github.com/nglong14/llmgateway/internal/config"
+	"github.com/nglong14/llmgateway/internal/provider"
+	"github.com/nglong14/llmgateway/internal/provider/openai"
+	"github.com/nglong14/llmgateway/internal/router"
 )
 
 func main() {
@@ -28,40 +28,19 @@ func main() {
 		log.Fatalf("failed to load config: %v", err)
 	}
 
-	// Create chi router with basic middleware.
-	r := chi.NewRouter()
-	r.Use(middleware.Logger)
-	r.Use(middleware.Recoverer)
-	r.Use(middleware.SetHeader("Content-Type", "application/json"))
+	// Create provider registry and register providers.
+	registry := provider.NewRegistry()
 
-	// Register routes.
+	if pc, ok := cfg.Providers["openai"]; ok {
+		oaiClient := openai.New(pc.APIKey, pc.BaseURL)
+		registry.Register(oaiClient, "gpt-", "o1-", "o3-", "o4-")
+		log.Println("Registered provider: openai")
+	}
 
-	// GET /health.
-	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
-	})
+	// TODO: Other providers will be registered here.
 
-	// GET /v1/models.
-	r.Get("/v1/models", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"object": "list",
-			"data":   []interface{}{},
-		})
-	})
-
-	// POST /v1/chat/completions .
-	r.Post("/v1/chat/completions", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNotImplemented)
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"error": map[string]string{
-				"message": "not implemented",
-				"type":    "server_error",
-				"code":    "not_implemented",
-			},
-		})
-	})
+	// Create router with all routes.
+	r := router.New(registry)
 
 	// Start HTTP server.
 	srv := &http.Server{
@@ -72,7 +51,6 @@ func main() {
 		IdleTimeout:  120 * time.Second,
 	}
 
-	// Start serving in a goroutine.
 	go func() {
 		fmt.Printf("LLM Gateway listening on %s\n", cfg.Server.Address)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -80,11 +58,11 @@ func main() {
 		}
 	}()
 
-	// 6. Graceful shutdown on SIGINT / SIGTERM.
-	quit := make(chan os.Signal, 1) //Buffered channel.
+	// Graceful shutdown on SIGINT / SIGTERM.
+	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	sig := <-quit
-	fmt.Printf("\n Received %s — shutting down gracefully…\n", sig)
+	fmt.Printf("\nReceived %s — shutting down gracefully…\n", sig)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
