@@ -15,9 +15,11 @@ import (
 	"github.com/nglong14/llmgateway/internal/provider"
 	"github.com/nglong14/llmgateway/internal/provider/openai"
 	"github.com/nglong14/llmgateway/internal/router"
+	"github.com/joho/godotenv"
 )
 
 func main() {
+	godotenv.Load()
 	// Parse --config flag.
 	configPath := flag.String("config", "configs/gateway.yaml", "path to YAML config file")
 	flag.Parse()
