@@ -13,6 +13,7 @@ import (
 
 	"github.com/nglong14/llmgateway/internal/config"
 	"github.com/nglong14/llmgateway/internal/provider"
+	"github.com/nglong14/llmgateway/internal/provider/gemini"
 	"github.com/nglong14/llmgateway/internal/provider/openai"
 	"github.com/nglong14/llmgateway/internal/router"
 	"github.com/joho/godotenv"
@@ -39,7 +40,11 @@ func main() {
 		log.Println("Registered provider: openai")
 	}
 
-	// TODO: Other providers will be registered here.
+	if pc, ok := cfg.Providers["gemini"]; ok {
+		gClient := gemini.New(pc.APIKey, pc.BaseURL)
+		registry.Register(gClient, "gemini-", "g-")
+		log.Println("Registered provider: gemini")
+	}
 
 	// Create router with all routes.
 	r := router.New(registry)

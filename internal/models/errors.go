@@ -1,8 +1,9 @@
+// Error handling
 package models
 
 import (
-    "encoding/json"
-    "net/http"
+	"encoding/json"
+	"net/http"
 )
 
 // ErrorResponse is the standard error envelope (matches OpenAI's format).

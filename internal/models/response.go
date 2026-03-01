@@ -1,3 +1,4 @@
+//Response handling for all providers
 package models
 
 // Unified OpenAI-compatible response structure

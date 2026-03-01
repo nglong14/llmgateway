@@ -19,6 +19,7 @@ graph LR
     D --> F
     E --> F
     F --> G["Step 7<br/>Wire into main.go"]
+    G --> H["Step 8<br/>Gemini Provider"]
 
     style A fill:#16213e,color:#fff
     style B fill:#0f3460,color:#fff
@@ -27,9 +28,10 @@ graph LR
     style E fill:#0f3460,color:#fff
     style F fill:#e94560,color:#fff
     style G fill:#1a1a2e,color:#fff
+    style H fill:#4285f4,color:#fff
 ```
 
-> **After this plan:** `curl POST /v1/chat/completions` with an OpenAI model returns a **real** GPT response. Streaming works. The remaining providers (Anthropic, Gemini, Ollama) slot in later with no architecture changes.
+> **After this plan:** `curl POST /v1/chat/completions` with an OpenAI or Gemini model returns a **real** response. Streaming works for both providers. The remaining providers (Anthropic, Ollama) slot in later with no architecture changes.
 
 ---
 
@@ -1275,12 +1277,651 @@ curl -X POST http://localhost:8080/v1/chat/completions `
 
 ---
 
+## Step 8 · Gemini Provider
+
+> **Goal:** Add Google Gemini as the second provider. This is the first provider that requires **real normalization** — Gemini's API format is fundamentally different from OpenAI's.
+
+### Gemini vs OpenAI — Format Comparison
+
+Understanding the differences is critical before writing any code:
+
+#### Request Format
+
+| Aspect | OpenAI (our unified format) | Gemini native |
+|--------|---------------------------|---------------|
+| **Endpoint** | `POST /v1/chat/completions` | `POST /v1beta/models/{model}:generateContent` |
+| **Streaming endpoint** | Same endpoint, `stream: true` | `POST /v1beta/models/{model}:streamGenerateContent` |
+| **Auth** | `Authorization: Bearer <key>` header | `?key=<key>` query parameter |
+| **Messages** | `messages: [{role, content}]` | `contents: [{role, parts: [{text}]}]` |
+| **Roles** | `"system"`, `"user"`, `"assistant"` | `"user"`, `"model"` (system is separate) |
+| **System message** | Part of `messages[]` with `role: "system"` | Separate `systemInstruction` field |
+| **Temperature** | Top-level `temperature` field | Inside `generationConfig.temperature` |
+| **Max tokens** | `max_tokens` | `generationConfig.maxOutputTokens` |
+| **Model** | `model` field in request body | Part of the URL path |
+
+#### Response Format
+
+| Aspect | OpenAI | Gemini |
+|--------|--------|--------|
+| **Wrapper** | `{id, object, created, model, choices, usage}` | `{candidates, usageMetadata, modelVersion}` |
+| **Content** | `choices[].message.content` (string) | `candidates[].content.parts[].text` |
+| **Finish reason** | `"stop"`, `"length"` (lowercase strings) | `"STOP"`, `"MAX_TOKENS"` (uppercase enums) |
+| **Token usage** | `usage: {prompt_tokens, completion_tokens, total_tokens}` | `usageMetadata: {promptTokenCount, candidatesTokenCount, totalTokenCount}` |
+| **Streaming** | SSE with `data: {JSON}\n\n` + `data: [DONE]` | NDJSON — a JSON array streamed line-by-line, no `data:` prefix, no `[DONE]` marker |
+
+#### Example: Same Request in Both Formats
+
+**OpenAI (what our gateway receives):**
+```json
+{
+  "model": "gemini-2.0-flash",
+  "messages": [
+    {"role": "system", "content": "You are helpful."},
+    {"role": "user", "content": "Hello"}
+  ],
+  "temperature": 0.7,
+  "max_tokens": 100
+}
+```
+
+**Gemini (what we send to Google):**
+```json
+{
+  "systemInstruction": {
+    "parts": [{"text": "You are helpful."}]
+  },
+  "contents": [
+    {
+      "role": "user",
+      "parts": [{"text": "Hello"}]
+    }
+  ],
+  "generationConfig": {
+    "temperature": 0.7,
+    "maxOutputTokens": 100
+  }
+}
+```
+
+**Gemini response (what Google returns):**
+```json
+{
+  "candidates": [
+    {
+      "content": {
+        "parts": [{"text": "Hello! How can I help?"}],
+        "role": "model"
+      },
+      "finishReason": "STOP"
+    }
+  ],
+  "usageMetadata": {
+    "promptTokenCount": 8,
+    "candidatesTokenCount": 6,
+    "totalTokenCount": 14
+  },
+  "modelVersion": "gemini-2.0-flash"
+}
+```
+
+---
+
+### [NEW] `internal/provider/gemini/types.go`
+
+Native Gemini request/response types for JSON serialization. These are **internal** to the Gemini provider — the rest of the gateway never sees them.
+
+```go
+package gemini
+
+// geminiRequest is the native Gemini generateContent request body.
+type geminiRequest struct {
+    Contents          []geminiContent      `json:"contents"`
+    SystemInstruction *geminiContent       `json:"systemInstruction,omitempty"`
+    GenerationConfig  *geminiGenConfig     `json:"generationConfig,omitempty"`
+}
+
+// geminiContent represents one turn in the conversation.
+type geminiContent struct {
+    Role  string       `json:"role,omitempty"`
+    Parts []geminiPart `json:"parts"`
+}
+
+// geminiPart holds a single piece of content (text-only for now).
+type geminiPart struct {
+    Text string `json:"text"`
+}
+
+// geminiGenConfig maps to Gemini's generationConfig object.
+type geminiGenConfig struct {
+    Temperature     *float64 `json:"temperature,omitempty"`
+    MaxOutputTokens *int     `json:"maxOutputTokens,omitempty"`
+}
+
+// geminiResponse is the native Gemini generateContent response.
+type geminiResponse struct {
+    Candidates    []geminiCandidate  `json:"candidates"`
+    UsageMetadata *geminiUsage       `json:"usageMetadata,omitempty"`
+    ModelVersion  string             `json:"modelVersion,omitempty"`
+}
+
+// geminiCandidate is one candidate in the response.
+type geminiCandidate struct {
+    Content      geminiContent `json:"content"`
+    FinishReason string        `json:"finishReason,omitempty"`
+}
+
+// geminiUsage holds token counts from Gemini.
+type geminiUsage struct {
+    PromptTokenCount     int `json:"promptTokenCount"`
+    CandidatesTokenCount int `json:"candidatesTokenCount"`
+    TotalTokenCount      int `json:"totalTokenCount"`
+}
+```
+
+#### Why separate types?
+
+These types mirror Gemini's JSON schema exactly, making `json.Marshal` / `json.Unmarshal` trivial. The transformation between our unified types and these native types happens in the provider's methods — not in the normalization layer. This keeps the Gemini-specific JSON details encapsulated.
+
+---
+
+### [NEW] `internal/provider/gemini/gemini.go`
+
+```go
+package gemini
+
+import (
+    "bufio"
+    "bytes"
+    "context"
+    "encoding/json"
+    "fmt"
+    "io"
+    "net/http"
+    "strings"
+    "time"
+
+    "github.com/nglong14/llmgateway/internal/models"
+)
+
+// Client implements provider.Provider for Google Gemini.
+type Client struct {
+    apiKey     string
+    baseURL    string
+    httpClient *http.Client
+}
+
+// New creates a Gemini provider client.
+func New(apiKey, baseURL string) *Client {
+    return &Client{
+        apiKey:  apiKey,
+        baseURL: baseURL,
+        httpClient: &http.Client{
+            Timeout: 120 * time.Second,
+        },
+    }
+}
+
+func (c *Client) Name() string { return "gemini" }
+```
+
+#### toGeminiRequest — Unified → Gemini Format
+
+```go
+// toGeminiRequest converts our unified request into Gemini's native format.
+func toGeminiRequest(req *models.ChatCompletionRequest) *geminiRequest {
+    gr := &geminiRequest{}
+
+    // Separate system messages from conversation messages.
+    for _, msg := range req.Messages {
+        if msg.Role == models.RoleSystem {
+            // Gemini uses a dedicated systemInstruction field.
+            gr.SystemInstruction = &geminiContent{
+                Parts: []geminiPart{{Text: msg.Content}},
+            }
+            continue
+        }
+
+        // Map roles: OpenAI "assistant" → Gemini "model".
+        role := msg.Role
+        if role == models.RoleAssistant {
+            role = "model"
+        }
+
+        gr.Contents = append(gr.Contents, geminiContent{
+            Role:  role,
+            Parts: []geminiPart{{Text: msg.Content}},
+        })
+    }
+
+    // Map generation config.
+    if req.Temperature != nil || req.MaxTokens != nil {
+        gr.GenerationConfig = &geminiGenConfig{
+            Temperature:     req.Temperature,
+            MaxOutputTokens: req.MaxTokens,
+        }
+    }
+
+    return gr
+}
+```
+
+#### toUnifiedResponse — Gemini → Unified Format
+
+```go
+// toUnifiedResponse converts a Gemini response into our unified format.
+func toUnifiedResponse(gr *geminiResponse, model string) *models.ChatCompletionResponse {
+    resp := &models.ChatCompletionResponse{
+        Object: "chat.completion",
+        Model:  model,
+    }
+
+    for i, cand := range gr.Candidates {
+        // Extract text from parts.
+        var content string
+        for _, part := range cand.Content.Parts {
+            content += part.Text
+        }
+
+        resp.Choices = append(resp.Choices, models.Choice{
+            Index: i,
+            Message: models.Message{
+                Role:    models.RoleAssistant,
+                Content: content,
+            },
+            FinishReason: mapFinishReason(cand.FinishReason),
+        })
+    }
+
+    // Map usage metadata.
+    if gr.UsageMetadata != nil {
+        resp.Usage = &models.Usage{
+            PromptTokens:     gr.UsageMetadata.PromptTokenCount,
+            CompletionTokens: gr.UsageMetadata.CandidatesTokenCount,
+            TotalTokens:      gr.UsageMetadata.TotalTokenCount,
+        }
+    }
+
+    return resp
+}
+
+// mapFinishReason converts Gemini's UPPER_CASE finish reasons to OpenAI's lowercase.
+func mapFinishReason(geminiReason string) string {
+    switch geminiReason {
+    case "STOP":
+        return "stop"
+    case "MAX_TOKENS":
+        return "length"
+    case "SAFETY":
+        return "content_filter"
+    default:
+        return "stop"
+    }
+}
+```
+
+#### ChatCompletion (non-streaming)
+
+```go
+func (c *Client) ChatCompletion(ctx context.Context, req *models.ChatCompletionRequest) (*models.ChatCompletionResponse, error) {
+    // 1. Convert to Gemini format.
+    geminiReq := toGeminiRequest(req)
+
+    body, err := json.Marshal(geminiReq)
+    if err != nil {
+        return nil, fmt.Errorf("gemini: marshal request: %w", err)
+    }
+
+    // 2. Build URL: /v1beta/models/{model}:generateContent?key=API_KEY
+    url := fmt.Sprintf("%s/models/%s:generateContent?key=%s",
+        c.baseURL, req.Model, c.apiKey)
+
+    httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+    if err != nil {
+        return nil, fmt.Errorf("gemini: create request: %w", err)
+    }
+    httpReq.Header.Set("Content-Type", "application/json")
+
+    // 3. Send request.
+    resp, err := c.httpClient.Do(httpReq)
+    if err != nil {
+        return nil, fmt.Errorf("gemini: send request: %w", err)
+    }
+    defer resp.Body.Close()
+
+    if resp.StatusCode != http.StatusOK {
+        respBody, _ := io.ReadAll(resp.Body)
+        return nil, fmt.Errorf("gemini: API error (status %d): %s", resp.StatusCode, string(respBody))
+    }
+
+    // 4. Parse Gemini response.
+    var geminiResp geminiResponse
+    if err := json.NewDecoder(resp.Body).Decode(&geminiResp); err != nil {
+        return nil, fmt.Errorf("gemini: decode response: %w", err)
+    }
+
+    // 5. Convert to unified format.
+    return toUnifiedResponse(&geminiResp, req.Model), nil
+}
+```
+
+#### ChatCompletionStream (streaming)
+
+Gemini streaming uses **NDJSON** (a JSON array streamed incrementally), not SSE. The response is a JSON array `[{...}, {...}, ...]` where each element is a `GenerateContentResponse`. We read line-by-line, stripping array syntax.
+
+```go
+func (c *Client) ChatCompletionStream(ctx context.Context, req *models.ChatCompletionRequest) (<-chan *models.StreamChunk, <-chan error) {
+    chunks := make(chan *models.StreamChunk, 10)
+    errCh := make(chan error, 1)
+
+    go func() {
+        defer close(chunks)
+        defer close(errCh)
+
+        geminiReq := toGeminiRequest(req)
+
+        body, err := json.Marshal(geminiReq)
+        if err != nil {
+            errCh <- fmt.Errorf("gemini: marshal request: %w", err)
+            return
+        }
+
+        // Use streamGenerateContent endpoint.
+        url := fmt.Sprintf("%s/models/%s:streamGenerateContent?alt=sse&key=%s",
+            c.baseURL, req.Model, c.apiKey)
+
+        httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+        if err != nil {
+            errCh <- fmt.Errorf("gemini: create request: %w", err)
+            return
+        }
+        httpReq.Header.Set("Content-Type", "application/json")
+
+        resp, err := c.httpClient.Do(httpReq)
+        if err != nil {
+            errCh <- fmt.Errorf("gemini: send request: %w", err)
+            return
+        }
+        defer resp.Body.Close()
+
+        if resp.StatusCode != http.StatusOK {
+            respBody, _ := io.ReadAll(resp.Body)
+            errCh <- fmt.Errorf("gemini: API error (status %d): %s", resp.StatusCode, string(respBody))
+            return
+        }
+
+        // Gemini with alt=sse returns SSE format: "data: {json}\n\n"
+        scanner := bufio.NewScanner(resp.Body)
+        for scanner.Scan() {
+            line := scanner.Text()
+
+            if !strings.HasPrefix(line, "data: ") {
+                continue
+            }
+
+            data := strings.TrimPrefix(line, "data: ")
+
+            // Parse the Gemini response chunk.
+            var geminiResp geminiResponse
+            if err := json.Unmarshal([]byte(data), &geminiResp); err != nil {
+                errCh <- fmt.Errorf("gemini: decode stream chunk: %w", err)
+                return
+            }
+
+            // Convert each candidate to a StreamChunk.
+            chunk := toStreamChunk(&geminiResp, req.Model)
+
+            select {
+            case chunks <- chunk:
+            case <-ctx.Done():
+                return
+            }
+        }
+
+        if err := scanner.Err(); err != nil {
+            errCh <- fmt.Errorf("gemini: read stream: %w", err)
+        }
+    }()
+
+    return chunks, errCh
+}
+
+// toStreamChunk converts a Gemini streaming response to our unified StreamChunk.
+func toStreamChunk(gr *geminiResponse, model string) *models.StreamChunk {
+    chunk := &models.StreamChunk{
+        Object: "chat.completion.chunk",
+        Model:  model,
+    }
+
+    for i, cand := range gr.Candidates {
+        var content string
+        for _, part := range cand.Content.Parts {
+            content += part.Text
+        }
+
+        delta := models.StreamDelta{
+            Index: i,
+            Delta: models.Delta{
+                Content: content,
+            },
+        }
+
+        if cand.FinishReason != "" {
+            delta.FinishReason = mapFinishReason(cand.FinishReason)
+        }
+
+        chunk.Choices = append(chunk.Choices, delta)
+    }
+
+    return chunk
+}
+```
+
+> **Note on `alt=sse`:** Gemini supports `?alt=sse` query parameter to return streaming responses in SSE format (`data: {...}\n\n`) instead of NDJSON. We use this to keep our streaming parsing consistent with OpenAI's format.
+
+#### ListModels & HealthCheck
+
+```go
+func (c *Client) ListModels(ctx context.Context) ([]models.ModelInfo, error) {
+    url := fmt.Sprintf("%s/models?key=%s", c.baseURL, c.apiKey)
+
+    httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+    if err != nil {
+        return nil, fmt.Errorf("gemini: create request: %w", err)
+    }
+
+    resp, err := c.httpClient.Do(httpReq)
+    if err != nil {
+        return nil, fmt.Errorf("gemini: list models: %w", err)
+    }
+    defer resp.Body.Close()
+
+    if resp.StatusCode != http.StatusOK {
+        return nil, fmt.Errorf("gemini: list models returned status %d", resp.StatusCode)
+    }
+
+    var result struct {
+        Models []struct {
+            Name string `json:"name"` // "models/gemini-2.0-flash"
+        } `json:"models"`
+    }
+    if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+        return nil, fmt.Errorf("gemini: decode models: %w", err)
+    }
+
+    var infos []models.ModelInfo
+    for _, m := range result.Models {
+        // Strip "models/" prefix to get just the model ID.
+        id := strings.TrimPrefix(m.Name, "models/")
+        infos = append(infos, models.ModelInfo{
+            ID:      id,
+            Object:  "model",
+            OwnedBy: "google",
+        })
+    }
+
+    return infos, nil
+}
+
+func (c *Client) HealthCheck(ctx context.Context) error {
+    ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+    defer cancel()
+    _, err := c.ListModels(ctx)
+    return err
+}
+```
+
+**Done when:** `go build ./internal/provider/gemini/...` compiles.
+
+---
+
+### [MODIFY] `internal/normalize/request.go` — Add Gemini case
+
+```diff
+ func NormalizeRequest(providerName string, req *models.ChatCompletionRequest) (*models.ChatCompletionRequest, error) {
+     switch providerName {
+     case "openai":
+         return req, nil
++    case "gemini":
++        // Gemini normalization happens inside the provider itself
++        // (toGeminiRequest), so this is pass-through at the gateway level.
++        return req, nil
+     default:
+         return req, nil
+     }
+ }
+```
+
+### [MODIFY] `internal/normalize/response.go` — Add Gemini case
+
+```diff
+ func NormalizeResponse(providerName string, resp *models.ChatCompletionResponse) (*models.ChatCompletionResponse, error) {
+     switch providerName {
+     case "openai":
+         return resp, nil
++    case "gemini":
++        // Gemini response normalization happens inside the provider itself
++        // (toUnifiedResponse), so this is pass-through at the gateway level.
++        return resp, nil
+     default:
+         return resp, nil
+     }
+ }
+```
+
+> **Design note:** Normalization is pass-through for Gemini because the Gemini provider handles all format translation internally via `toGeminiRequest` and `toUnifiedResponse`. This is intentional — the normalization layer is for light tweaks, while deep format transformation belongs in the provider.
+
+---
+
+### [MODIFY] `cmd/gateway/main.go` — Register Gemini Provider
+
+```diff
+ import (
+     ...
+     "github.com/nglong14/llmgateway/internal/provider/openai"
++    "github.com/nglong14/llmgateway/internal/provider/gemini"
+     ...
+ )
+
+ func main() {
+     ...
+     if pc, ok := cfg.Providers["openai"]; ok {
+         oaiClient := openai.New(pc.APIKey, pc.BaseURL)
+         registry.Register(oaiClient, "gpt-", "o1-", "o3-", "o4-")
+         log.Println("✅ Registered provider: openai")
+     }
+
++    if pc, ok := cfg.Providers["gemini"]; ok {
++        gemClient := gemini.New(pc.APIKey, pc.BaseURL)
++        registry.Register(gemClient, "gemini-")
++        log.Println("✅ Registered provider: gemini")
++    }
+     ...
+ }
+```
+
+### [MODIFY] `configs/gateway.yaml` — Add Gemini Config
+
+```diff
+ providers:
+   openai:
+     api_key: ${OPENAI_API_KEY}
+     base_url: "https://api.openai.com/v1"
++  gemini:
++    api_key: ${GEMINI_API_KEY}
++    base_url: "https://generativelanguage.googleapis.com/v1beta"
+```
+
+### [MODIFY] `.env.example` — Add Gemini Key Placeholder
+
+```diff
+ OPENAI_API_KEY=sk-your-openai-api-key-here
++GEMINI_API_KEY=your-gemini-api-key-here
+```
+
+---
+
+### Verification Plan for Step 8
+
+#### Automated: Build Verification
+
+```powershell
+# Must compile with zero errors
+go build ./...
+```
+
+#### Automated: Unit Tests
+
+```powershell
+# Run all tests
+go test ./... -v -count=1 -race
+```
+
+> [!NOTE]
+> New test files to add:
+> - `internal/provider/gemini/gemini_test.go` — test `toGeminiRequest` (role mapping, system message extraction, generation config) and `toUnifiedResponse` (content extraction, finish reason mapping, usage mapping)
+
+#### Manual: End-to-End Smoke Test
+
+> [!IMPORTANT]
+> Requires a valid `GEMINI_API_KEY` environment variable.
+
+```powershell
+# 1. Set your API key
+$env:GEMINI_API_KEY = "your-key-here"
+
+# 2. Start the gateway
+go run ./cmd/gateway --config configs/gateway.yaml
+
+# 3. Non-streaming chat with Gemini
+curl -X POST http://localhost:8080/v1/chat/completions `
+  -H "Content-Type: application/json" `
+  -d '{"model":"gemini-2.0-flash","messages":[{"role":"user","content":"Say hello in one word"}]}'
+# Expected: JSON with choices[0].message.content and usage token counts
+
+# 4. Streaming chat with Gemini
+curl -N -X POST http://localhost:8080/v1/chat/completions `
+  -H "Content-Type: application/json" `
+  -d '{"model":"gemini-2.0-flash","messages":[{"role":"user","content":"Say hello in one word"}],"stream":true}'
+# Expected: SSE events ending with data: [DONE]
+
+# 5. System message test
+curl -X POST http://localhost:8080/v1/chat/completions `
+  -H "Content-Type: application/json" `
+  -d '{"model":"gemini-2.0-flash","messages":[{"role":"system","content":"You are a pirate"},{"role":"user","content":"Say hello"}]}'
+# Expected: Response in pirate style
+
+# 6. List models (should include both OpenAI and Gemini models)
+curl http://localhost:8080/v1/models
+# Expected: {"object":"list","data":[...OpenAI models..., ...Gemini models...]}
+```
+
+---
+
 ## What Comes Next (Not in This Plan)
 
-After this plan is complete, the remaining work from [implementation_plan.md](file:///d:/LLMGateway/.agent/implementation_plan.md) is:
+After this plan is complete, the remaining work is:
 
 1. **Anthropic provider** — `internal/provider/anthropic/anthropic.go` + normalization cases
-2. **Gemini provider** — `internal/provider/gemini/gemini.go` + normalization cases
-3. **Ollama provider** — `internal/provider/ollama/ollama.go` + normalization cases
+2. **Ollama provider** — `internal/provider/ollama/ollama.go` + normalization cases
 
 Each just implements the `Provider` interface and adds a `case` to the normalization `switch` statements. No architecture changes needed.
