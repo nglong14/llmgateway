@@ -12,6 +12,8 @@ func NormalizeResponse(providerName string, resp *models.ChatCompletionResponse)
 		return resp, nil
 	case "gemini":
 		return resp, nil
+	case "anthropic":
+		return resp, nil
 	default:
 		return resp, nil
 	}

@@ -42,7 +42,7 @@ func (r *Registry) Resolve(model, explicitProvider string) (Provider, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	// 1. Explicit provider override.
+	// Explicit provider override.
 	if explicitProvider != "" {
 		if p, ok := r.providers[explicitProvider]; ok {
 			return p, nil
@@ -50,7 +50,7 @@ func (r *Registry) Resolve(model, explicitProvider string) (Provider, error) {
 		return nil, fmt.Errorf("unknown provider: %q", explicitProvider)
 	}
 
-	// 2. Prefix matching.
+	// Prefix matching.
 	for _, entry := range r.prefixes {
 		if strings.HasPrefix(model, entry.prefix) {
 			return entry.provider, nil

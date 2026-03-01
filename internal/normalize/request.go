@@ -1,4 +1,4 @@
-//Package normalize handles the normalization of requests and responses.
+// Package normalize handles the normalization of requests and responses.
 package normalize
 
 import "github.com/nglong14/llmgateway/internal/models"
@@ -9,6 +9,8 @@ func NormalizeRequest(providerName string, req *models.ChatCompletionRequest) (*
 	case "openai":
 		return req, nil
 	case "gemini":
+		return req, nil
+	case "anthropic":
 		return req, nil
 	default:
 		return req, nil

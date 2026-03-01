@@ -11,12 +11,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/joho/godotenv"
 	"github.com/nglong14/llmgateway/internal/config"
 	"github.com/nglong14/llmgateway/internal/provider"
+	"github.com/nglong14/llmgateway/internal/provider/anthropic"
 	"github.com/nglong14/llmgateway/internal/provider/gemini"
 	"github.com/nglong14/llmgateway/internal/provider/openai"
 	"github.com/nglong14/llmgateway/internal/router"
-	"github.com/joho/godotenv"
 )
 
 func main() {
@@ -44,6 +45,12 @@ func main() {
 		gClient := gemini.New(pc.APIKey, pc.BaseURL)
 		registry.Register(gClient, "gemini-", "g-")
 		log.Println("Registered provider: gemini")
+	}
+
+	if pc, ok := cfg.Providers["anthropic"]; ok {
+		aClient := anthropic.New(pc.APIKey, pc.BaseURL)
+		registry.Register(aClient, "claude-")
+		log.Println("Registered provider: anthropic")
 	}
 
 	// Create router with all routes.
