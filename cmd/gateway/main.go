@@ -15,6 +15,7 @@ import (
 	"github.com/nglong14/llmgateway/internal/config"
 	"github.com/nglong14/llmgateway/internal/provider"
 	"github.com/nglong14/llmgateway/internal/provider/anthropic"
+	"github.com/nglong14/llmgateway/internal/provider/deepseek"
 	"github.com/nglong14/llmgateway/internal/provider/gemini"
 	"github.com/nglong14/llmgateway/internal/provider/openai"
 	"github.com/nglong14/llmgateway/internal/router"
@@ -51,6 +52,12 @@ func main() {
 		aClient := anthropic.New(pc.APIKey, pc.BaseURL)
 		registry.Register(aClient, "claude-")
 		log.Println("Registered provider: anthropic")
+	}
+
+	if pc, ok := cfg.Providers["deepseek"]; ok {
+		dsClient := deepseek.New(pc.APIKey, pc.BaseURL)
+		registry.Register(dsClient, "deepseek-")
+		log.Println("Registered provider: deepseek")
 	}
 
 	// Create router with all routes.
