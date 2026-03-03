@@ -13,6 +13,7 @@ import (
 
 	"github.com/joho/godotenv"
 	"github.com/nglong14/llmgateway/internal/config"
+	"github.com/nglong14/llmgateway/internal/middleware"
 	"github.com/nglong14/llmgateway/internal/provider"
 	"github.com/nglong14/llmgateway/internal/provider/anthropic"
 	"github.com/nglong14/llmgateway/internal/provider/deepseek"
@@ -60,8 +61,25 @@ func main() {
 		log.Println("Registered provider: deepseek")
 	}
 
-	// Create router with all routes.
-	r := router.New(registry)
+	// Initialize rate limiter with config values (default to safe values if zero).
+	rps := cfg.RateLimit.RPS
+	if rps == 0 {
+		rps = 10
+	}
+	burst := cfg.RateLimit.Burst
+	if burst == 0 {
+		burst = 20
+	}
+	cleanupInterval := cfg.RateLimit.CleanupInterval
+	if cleanupInterval == 0 {
+		cleanupInterval = 5 * time.Minute
+	}
+	rl := middleware.NewRateLimiter(rps, burst, cleanupInterval)
+	defer rl.Stop()
+	log.Printf("Rate limiter: %.0f req/s, burst %d", rps, burst)
+
+	// Create router with all routes and middleware.
+	r := router.New(registry, rl)
 
 	// Start HTTP server.
 	srv := &http.Server{

@@ -1,4 +1,4 @@
-//Package config handles loading and parsing the configuration file.
+// Package config handles loading and parsing the configuration file.
 package config
 
 import (
@@ -6,14 +6,17 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
 
 // Top-level keys
 type Config struct {
-	Server    ServerConfig              `yaml:"server"`
-	Providers map[string]ProviderConfig `yaml:"providers"`
+	Server         ServerConfig              `yaml:"server"`
+	Providers      map[string]ProviderConfig `yaml:"providers"`
+	RateLimit      RateLimitConfig           `yaml:"rate_limit"`
+	CircuitBreaker CircuitBreakerConfig      `yaml:"circuit_breaker"`
 }
 
 // HTTP server settings.
@@ -25,6 +28,20 @@ type ServerConfig struct {
 type ProviderConfig struct {
 	APIKey  string `yaml:"api_key"`
 	BaseURL string `yaml:"base_url"`
+}
+
+// RateLimitConfig holds per-IP token-bucket settings.
+type RateLimitConfig struct {
+	RPS             float64       `yaml:"rps"`
+	Burst           int           `yaml:"burst"`
+	CleanupInterval time.Duration `yaml:"cleanup_interval"`
+}
+
+// CircuitBreakerConfig holds per-provider circuit breaker settings.
+type CircuitBreakerConfig struct {
+	MaxRequests uint32        `yaml:"max_requests"`
+	Interval    time.Duration `yaml:"interval"`
+	Timeout     time.Duration `yaml:"timeout"`
 }
 
 // Matches ${ENV_VAR} placeholders.
