@@ -13,6 +13,7 @@ import (
 
 	"github.com/joho/godotenv"
 	"github.com/nglong14/llmgateway/internal/config"
+	"github.com/nglong14/llmgateway/internal/metrics"
 	"github.com/nglong14/llmgateway/internal/middleware"
 	"github.com/nglong14/llmgateway/internal/provider"
 	"github.com/nglong14/llmgateway/internal/provider/anthropic"
@@ -80,6 +81,10 @@ func main() {
 	rl := middleware.NewRateLimiter(rps, burst, cleanupInterval)
 	defer rl.Stop()
 	log.Printf("Rate limiter: %.0f req/s, burst %d", rps, burst)
+
+	// Initialize Prometheus metrics.
+	metrics.Init()
+	log.Println("Prometheus metrics available at /metrics")
 
 	// Create router with all routes and middleware.
 	r := router.New(registry, rl)

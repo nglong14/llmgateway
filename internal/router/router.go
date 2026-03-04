@@ -4,6 +4,7 @@ package router
 import (
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
+	"github.com/nglong14/llmgateway/internal/metrics"
 	"github.com/nglong14/llmgateway/internal/middleware"
 	"github.com/nglong14/llmgateway/internal/provider"
 )
@@ -15,16 +16,24 @@ func New(registry *provider.Registry, rl *middleware.RateLimiter) chi.Router {
 	//Middleware
 	r.Use(chimiddleware.Logger)
 	r.Use(chimiddleware.Recoverer)
-	r.Use(chimiddleware.SetHeader("Content-Type", "application/json"))
-	r.Use(rl.Handler)
+	r.Use(middleware.PrometheusMiddleware)
 
-	//Handlers
-	h := &Handlers{registry: registry}
+	// Prometheus /metrics endpoint (serves text/plain, outside JSON header).
+	r.Get("/metrics", metrics.Handler().ServeHTTP)
 
-	//Routes
-	r.Get("/health", h.Health)
-	r.Get("/v1/models", h.ListModels)
-	r.Post("/v1/chat/completions", h.ChatCompletion)
+	// All API routes share the JSON content-type header.
+	r.Group(func(api chi.Router) {
+		api.Use(chimiddleware.SetHeader("Content-Type", "application/json"))
+		api.Use(rl.Handler)
+
+		//Handlers
+		h := &Handlers{registry: registry}
+
+		//Routes
+		api.Get("/health", h.Health)
+		api.Get("/v1/models", h.ListModels)
+		api.Post("/v1/chat/completions", h.ChatCompletion)
+	})
 
 	return r
 }

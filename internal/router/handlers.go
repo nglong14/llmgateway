@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"time"
 
+	"github.com/nglong14/llmgateway/internal/metrics"
 	"github.com/nglong14/llmgateway/internal/models"
 	"github.com/nglong14/llmgateway/internal/normalize"
 	"github.com/nglong14/llmgateway/internal/provider"
@@ -83,10 +85,27 @@ func (h *Handlers) ChatCompletion(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) handleNonStream(w http.ResponseWriter, r *http.Request, p provider.Provider, req *models.ChatCompletionRequest) {
+	start := time.Now()
+
 	resp, err := p.ChatCompletion(r.Context(), req)
+
+	duration := time.Since(start).Seconds()
+	metrics.ProviderRequestDuration.WithLabelValues(p.Name(), "chat_completion").Observe(duration)
+
 	if err != nil {
+		metrics.ProviderRequestsTotal.WithLabelValues(p.Name(), "chat_completion", "error").Inc()
 		models.WriteProviderError(w, err.Error())
 		return
+	}
+
+	metrics.ProviderRequestsTotal.WithLabelValues(p.Name(), "chat_completion", "success").Inc()
+
+	// Record token usage if available.
+	if resp.Usage.PromptTokens > 0 {
+		metrics.ProviderTokensTotal.WithLabelValues(p.Name(), "prompt").Add(float64(resp.Usage.PromptTokens))
+	}
+	if resp.Usage.CompletionTokens > 0 {
+		metrics.ProviderTokensTotal.WithLabelValues(p.Name(), "completion").Add(float64(resp.Usage.CompletionTokens))
 	}
 
 	// Normalize response back to unified format.
@@ -101,6 +120,8 @@ func (h *Handlers) handleNonStream(w http.ResponseWriter, r *http.Request, p pro
 }
 
 func (h *Handlers) handleStream(w http.ResponseWriter, r *http.Request, p provider.Provider, req *models.ChatCompletionRequest) {
+	start := time.Now()
+
 	// Switch to SSE headers.
 	streaming.SetSSEHeaders(w)
 
@@ -109,6 +130,7 @@ func (h *Handlers) handleStream(w http.ResponseWriter, r *http.Request, p provid
 	for chunk := range chunks {
 		if err := streaming.WriteSSEChunk(w, chunk); err != nil {
 			log.Printf("error writing SSE chunk: %v", err)
+			metrics.ProviderRequestsTotal.WithLabelValues(p.Name(), "chat_completion_stream", "error").Inc()
 			return
 		}
 	}
@@ -118,9 +140,15 @@ func (h *Handlers) handleStream(w http.ResponseWriter, r *http.Request, p provid
 	case err := <-errCh:
 		if err != nil {
 			log.Printf("streaming error: %v", err)
+			metrics.ProviderRequestsTotal.WithLabelValues(p.Name(), "chat_completion_stream", "error").Inc()
+			metrics.ProviderRequestDuration.WithLabelValues(p.Name(), "chat_completion_stream").Observe(time.Since(start).Seconds())
+			streaming.WriteSSEDone(w)
+			return
 		}
 	default:
 	}
 
+	metrics.ProviderRequestsTotal.WithLabelValues(p.Name(), "chat_completion_stream", "success").Inc()
+	metrics.ProviderRequestDuration.WithLabelValues(p.Name(), "chat_completion_stream").Observe(time.Since(start).Seconds())
 	streaming.WriteSSEDone(w)
 }
