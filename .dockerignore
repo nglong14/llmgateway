@@ -1,0 +1,10 @@
+.git
+.gitignore
+.env
+.agent
+bin/
+*.exe
+gateway.exe
+README.md
+Makefile
+loadtests/

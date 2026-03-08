@@ -1,4 +1,4 @@
-.PHONY: build run test clean
+.PHONY: build run test clean docker-up docker-down k6-smoke k6-stress k6-rate-limit
 
 build:
 	go build -o bin/gateway.exe ./cmd/gateway
@@ -11,3 +11,18 @@ test:
 
 clean:
 	rm -rf bin/
+
+docker-up:
+	docker compose up --build -d
+
+docker-down:
+	docker compose down
+
+k6-smoke:
+	k6 run loadtests/smoke.js
+
+k6-stress:
+	k6 run loadtests/stress.js
+
+k6-rate-limit:
+	k6 run loadtests/rate_limit.js
