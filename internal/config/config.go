@@ -13,10 +13,11 @@ import (
 
 // Top-level keys
 type Config struct {
-	Server         ServerConfig              `yaml:"server"`
-	Providers      map[string]ProviderConfig `yaml:"providers"`
-	RateLimit      RateLimitConfig           `yaml:"rate_limit"`
-	CircuitBreaker CircuitBreakerConfig      `yaml:"circuit_breaker"`
+	Server             ServerConfig                       `yaml:"server"`
+	Providers          map[string]ProviderConfig          `yaml:"providers"`
+	RateLimit          RateLimitConfig                    `yaml:"rate_limit"`
+	ProviderRateLimits map[string]ProviderRateLimitConfig `yaml:"provider_rate_limits"`
+	CircuitBreaker     CircuitBreakerConfig               `yaml:"circuit_breaker"`
 }
 
 // HTTP server settings.
@@ -35,6 +36,13 @@ type RateLimitConfig struct {
 	RPS             float64       `yaml:"rps"`
 	Burst           int           `yaml:"burst"`
 	CleanupInterval time.Duration `yaml:"cleanup_interval"`
+	TrustedProxies  []string      `yaml:"trusted_proxies"`
+}
+
+// ProviderRateLimitConfig holds per-provider aggregate rate limit settings.
+type ProviderRateLimitConfig struct {
+	RPM   float64 `yaml:"rpm"`   // Requests per minute (matches provider quota docs).
+	Burst int     `yaml:"burst"` // Max burst size.
 }
 
 // CircuitBreakerConfig holds per-provider circuit breaker settings.

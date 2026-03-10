@@ -19,6 +19,25 @@ rate_limit:
   rps: 10
   burst: 20
   cleanup_interval: 5m
+  trusted_proxies:
+    - "10.0.0.0/8"
+    - "172.16.0.0/12"
+    - "192.168.0.0/16"
+    - "127.0.0.0/8"
+
+provider_rate_limits:
+  openai:
+    rpm: 400
+    burst: 50
+  anthropic:
+    rpm: 40
+    burst: 10
+  gemini:
+    rpm: 300
+    burst: 40
+  deepseek:
+    rpm: 400
+    burst: 50
 
 circuit_breaker:
   max_requests: 5

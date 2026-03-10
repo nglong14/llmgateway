@@ -38,30 +38,41 @@ func main() {
 	// Create provider registry and register providers.
 	registry := provider.NewRegistry()
 
-	// cbCfg holds the circuit breaker settings (shared across all providers).
+	// Shared middleware configs.
 	cbCfg := cfg.CircuitBreaker
+	providerRL := cfg.ProviderRateLimits
+
+	// wrapProvider applies the decorator chain: rate limiter (outer) → circuit breaker → provider.
+	// Rate limiter is outermost so rejected requests never touch the circuit breaker.
+	wrapProvider := func(p provider.Provider, name string) provider.Provider {
+		wrapped := middleware.NewCircuitBreakerProvider(p, cbCfg)
+		if rlCfg, ok := providerRL[name]; ok && rlCfg.RPM > 0 {
+			return middleware.NewRateLimitedProvider(wrapped, rlCfg)
+		}
+		return wrapped
+	}
 
 	if pc, ok := cfg.Providers["openai"]; ok {
 		oaiClient := openai.New(pc.APIKey, pc.BaseURL)
-		registry.Register(middleware.NewCircuitBreakerProvider(oaiClient, cbCfg), "gpt-", "o1-", "o3-", "o4-")
+		registry.Register(wrapProvider(oaiClient, "openai"), "gpt-", "o1-", "o3-", "o4-")
 		log.Println("Registered provider: openai")
 	}
 
 	if pc, ok := cfg.Providers["gemini"]; ok {
 		gClient := gemini.New(pc.APIKey, pc.BaseURL)
-		registry.Register(middleware.NewCircuitBreakerProvider(gClient, cbCfg), "gemini-", "g-")
+		registry.Register(wrapProvider(gClient, "gemini"), "gemini-", "g-")
 		log.Println("Registered provider: gemini")
 	}
 
 	if pc, ok := cfg.Providers["anthropic"]; ok {
 		aClient := anthropic.New(pc.APIKey, pc.BaseURL)
-		registry.Register(middleware.NewCircuitBreakerProvider(aClient, cbCfg), "claude-")
+		registry.Register(wrapProvider(aClient, "anthropic"), "claude-")
 		log.Println("Registered provider: anthropic")
 	}
 
 	if pc, ok := cfg.Providers["deepseek"]; ok {
 		dsClient := deepseek.New(pc.APIKey, pc.BaseURL)
-		registry.Register(middleware.NewCircuitBreakerProvider(dsClient, cbCfg), "deepseek-")
+		registry.Register(wrapProvider(dsClient, "deepseek"), "deepseek-")
 		log.Println("Registered provider: deepseek")
 	}
 
@@ -78,9 +89,9 @@ func main() {
 	if cleanupInterval == 0 {
 		cleanupInterval = 5 * time.Minute
 	}
-	rl := middleware.NewRateLimiter(rps, burst, cleanupInterval)
+	rl := middleware.NewRateLimiter(rps, burst, cleanupInterval, cfg.RateLimit.TrustedProxies)
 	defer rl.Stop()
-	log.Printf("Rate limiter: %.0f req/s, burst %d", rps, burst)
+	log.Printf("Rate limiter: %.0f req/s, burst %d, trusted proxies: %v", rps, burst, cfg.RateLimit.TrustedProxies)
 
 	// Initialize Prometheus metrics.
 	metrics.Init()

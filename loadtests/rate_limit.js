@@ -7,6 +7,7 @@ const rejected = new Counter('rate_limited_requests');
 export const options = {
     vus: 1,
     iterations: 50,
+    blacklistIPs: [],
 };
 
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080';

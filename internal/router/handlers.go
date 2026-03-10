@@ -136,16 +136,12 @@ func (h *Handlers) handleStream(w http.ResponseWriter, r *http.Request, p provid
 	}
 
 	// Check for streaming errors.
-	select {
-	case err := <-errCh:
-		if err != nil {
-			log.Printf("streaming error: %v", err)
-			metrics.ProviderRequestsTotal.WithLabelValues(p.Name(), "chat_completion_stream", "error").Inc()
-			metrics.ProviderRequestDuration.WithLabelValues(p.Name(), "chat_completion_stream").Observe(time.Since(start).Seconds())
-			streaming.WriteSSEDone(w)
-			return
-		}
-	default:
+	if err := <-errCh; err != nil {
+		log.Printf("streaming error: %v", err)
+		metrics.ProviderRequestsTotal.WithLabelValues(p.Name(), "chat_completion_stream", "error").Inc()
+		metrics.ProviderRequestDuration.WithLabelValues(p.Name(), "chat_completion_stream").Observe(time.Since(start).Seconds())
+		streaming.WriteSSEDone(w)
+		return
 	}
 
 	metrics.ProviderRequestsTotal.WithLabelValues(p.Name(), "chat_completion_stream", "success").Inc()
