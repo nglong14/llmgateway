@@ -122,7 +122,7 @@ func main() {
 	sig := <-quit
 	fmt.Printf("\nReceived %s — shutting down gracefully…\n", sig)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 
 	if err := srv.Shutdown(ctx); err != nil {
