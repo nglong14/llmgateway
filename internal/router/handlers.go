@@ -9,7 +9,6 @@ import (
 
 	"github.com/nglong14/llmgateway/internal/metrics"
 	"github.com/nglong14/llmgateway/internal/models"
-	"github.com/nglong14/llmgateway/internal/normalize"
 	"github.com/nglong14/llmgateway/internal/provider"
 	"github.com/nglong14/llmgateway/internal/streaming"
 )
@@ -69,18 +68,11 @@ func (h *Handlers) ChatCompletion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Normalize request for the target provider.
-	normalizedReq, err := normalize.NormalizeRequest(p.Name(), &req)
-	if err != nil {
-		models.WriteInvalidRequest(w, "normalization error: "+err.Error())
-		return
-	}
-
 	// Dispatch (streaming or non-streaming).
-	if normalizedReq.Stream {
-		h.handleStream(w, r, p, normalizedReq)
+	if req.Stream {
+		h.handleStream(w, r, p, &req)
 	} else {
-		h.handleNonStream(w, r, p, normalizedReq)
+		h.handleNonStream(w, r, p, &req)
 	}
 }
 
@@ -108,15 +100,8 @@ func (h *Handlers) handleNonStream(w http.ResponseWriter, r *http.Request, p pro
 		metrics.ProviderTokensTotal.WithLabelValues(p.Name(), "completion").Add(float64(resp.Usage.CompletionTokens))
 	}
 
-	// Normalize response back to unified format.
-	normalized, err := normalize.NormalizeResponse(p.Name(), resp)
-	if err != nil {
-		models.WriteProviderError(w, "response normalization error: "+err.Error())
-		return
-	}
-
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(normalized)
+	json.NewEncoder(w).Encode(resp)
 }
 
 func (h *Handlers) handleStream(w http.ResponseWriter, r *http.Request, p provider.Provider, req *models.ChatCompletionRequest) {

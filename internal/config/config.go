@@ -3,6 +3,7 @@ package config
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"regexp"
 	"strings"
@@ -71,10 +72,10 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("config: read file %s: %w", path, err)
 	}
 
-	// Replace env variables with their values(expand placeholders).
+	// Replace env variables with their values (expand placeholders).
 	expanded := expandEnvVars(string(data))
 
-	// Pass the expanded YAML to yaml (Unmarshal)
+	// Pass the expanded YAML to yaml (Unmarshal).
 	var cfg Config
 	if err := yaml.Unmarshal([]byte(expanded), &cfg); err != nil {
 		return nil, fmt.Errorf("config: parse yaml: %w", err)
@@ -83,11 +84,59 @@ func Load(path string) (*Config, error) {
 	return &cfg, nil
 }
 
+// Validate checks that the loaded configuration has all required fields
+// and sane value ranges. Call immediately after Load().
+func (c *Config) Validate() error {
+	// Server address.
+	if c.Server.Address == "" {
+		return fmt.Errorf("config: server.address is required")
+	}
+
+	// At least one provider must be configured.
+	if len(c.Providers) == 0 {
+		return fmt.Errorf("config: at least one provider must be configured")
+	}
+
+	// Each provider needs non-empty credentials.
+	for name, p := range c.Providers {
+		if p.APIKey == "" {
+			return fmt.Errorf("config: provider %q has empty api_key (check env vars)", name)
+		}
+		if p.BaseURL == "" {
+			return fmt.Errorf("config: provider %q has empty base_url", name)
+		}
+	}
+
+	// Rate limit values must be non-negative.
+	if c.RateLimit.RPS < 0 {
+		return fmt.Errorf("config: rate_limit.rps must be >= 0, got %.2f", c.RateLimit.RPS)
+	}
+	if c.RateLimit.Burst < 0 {
+		return fmt.Errorf("config: rate_limit.burst must be >= 0, got %d", c.RateLimit.Burst)
+	}
+
+	// Provider rate limits must reference known providers.
+	for name, rl := range c.ProviderRateLimits {
+		if _, ok := c.Providers[name]; !ok {
+			return fmt.Errorf("config: provider_rate_limits references unknown provider %q", name)
+		}
+		if rl.RPM < 0 {
+			return fmt.Errorf("config: provider_rate_limits.%s.rpm must be >= 0", name)
+		}
+	}
+
+	return nil
+}
+
 // expandEnvVars replaces every ${VAR} in s with the corresponding
 // environment variable value. Missing variables resolve to "".
 func expandEnvVars(s string) string {
 	return envVarPattern.ReplaceAllStringFunc(s, func(match string) string {
 		varName := strings.TrimSuffix(strings.TrimPrefix(match, "${"), "}")
-		return os.Getenv(varName)
+		val, ok := os.LookupEnv(varName)
+		if !ok {
+			log.Printf("WARNING: environment variable %s is not set", varName)
+		}
+		return val
 	})
 }

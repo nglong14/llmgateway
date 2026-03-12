@@ -296,7 +296,9 @@ func (c *Client) ListModels(ctx context.Context) ([]models.ModelInfo, error) {
 	var allModels []models.ModelInfo
 	afterID := ""
 
-	for {
+	// fetchPage is scoped so that defer resp.Body.Close() runs after each
+	// iteration instead of accumulating until ListModels returns.
+	fetchPage := func(afterID string) (anthropicModelsResponse, error) {
 		url := c.baseURL + "/v1/models?limit=100"
 		if afterID != "" {
 			url += "&after_id=" + afterID
@@ -304,23 +306,31 @@ func (c *Client) ListModels(ctx context.Context) ([]models.ModelInfo, error) {
 
 		httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 		if err != nil {
-			return nil, fmt.Errorf("anthropic: create request: %w", err)
+			return anthropicModelsResponse{}, fmt.Errorf("anthropic: create request: %w", err)
 		}
 		c.setHeaders(httpReq)
 
 		resp, err := c.httpClient.Do(httpReq)
 		if err != nil {
-			return nil, fmt.Errorf("anthropic: list models: %w", err)
+			return anthropicModelsResponse{}, fmt.Errorf("anthropic: list models: %w", err)
 		}
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("anthropic: list models returned status %d", resp.StatusCode)
+			return anthropicModelsResponse{}, fmt.Errorf("anthropic: list models returned status %d", resp.StatusCode)
 		}
 
 		var result anthropicModelsResponse
 		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-			return nil, fmt.Errorf("anthropic: decode models: %w", err)
+			return anthropicModelsResponse{}, fmt.Errorf("anthropic: decode models: %w", err)
+		}
+		return result, nil
+	}
+
+	for {
+		result, err := fetchPage(afterID)
+		if err != nil {
+			return nil, err
 		}
 
 		for _, m := range result.Data {

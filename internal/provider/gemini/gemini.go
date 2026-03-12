@@ -172,157 +172,157 @@ func (c *Client) ChatCompletion(ctx context.Context, req *models.ChatCompletionR
 }
 
 func (c *Client) ChatCompletionStream(ctx context.Context, req *models.ChatCompletionRequest) (<-chan *models.StreamChunk, <-chan error) {
-    chunks := make(chan *models.StreamChunk, 10)
-    errCh := make(chan error, 1)
+	chunks := make(chan *models.StreamChunk, 10)
+	errCh := make(chan error, 1)
 
-    go func() {
-        defer close(chunks)
-        defer close(errCh)
+	go func() {
+		defer close(chunks)
+		defer close(errCh)
 
-        geminiReq := toGeminiRequest(req)
+		geminiReq := toGeminiRequest(req)
 
-        body, err := json.Marshal(geminiReq)
-        if err != nil {
-            errCh <- fmt.Errorf("gemini: marshal request: %w", err)
-            return
-        }
+		body, err := json.Marshal(geminiReq)
+		if err != nil {
+			errCh <- fmt.Errorf("gemini: marshal request: %w", err)
+			return
+		}
 
-        // Use streamGenerateContent endpoint.
-        url := fmt.Sprintf("%s/models/%s:streamGenerateContent?alt=sse",
-            c.baseURL, req.Model)
+		// Use streamGenerateContent endpoint.
+		url := fmt.Sprintf("%s/models/%s:streamGenerateContent?alt=sse",
+			c.baseURL, req.Model)
 
-        httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
-        if err != nil {
-            errCh <- fmt.Errorf("gemini: create request: %w", err)
-            return
-        }
-        c.setHeaders(httpReq)
+		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+		if err != nil {
+			errCh <- fmt.Errorf("gemini: create request: %w", err)
+			return
+		}
+		c.setHeaders(httpReq)
 
-        resp, err := c.httpClient.Do(httpReq)
-        if err != nil {
-            errCh <- fmt.Errorf("gemini: send request: %w", err)
-            return
-        }
-        defer resp.Body.Close()
+		resp, err := c.httpClient.Do(httpReq)
+		if err != nil {
+			errCh <- fmt.Errorf("gemini: send request: %w", err)
+			return
+		}
+		defer resp.Body.Close()
 
-        if resp.StatusCode != http.StatusOK {
-            respBody, _ := io.ReadAll(resp.Body)
-            errCh <- fmt.Errorf("gemini: API error (status %d): %s", resp.StatusCode, string(respBody))
-            return
-        }
+		if resp.StatusCode != http.StatusOK {
+			respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+			errCh <- fmt.Errorf("gemini: API error (status %d): %s", resp.StatusCode, string(respBody))
+			return
+		}
 
-        // Gemini with alt=sse returns SSE format: "data: {json}\n\n"
-        scanner := bufio.NewScanner(resp.Body)
-        scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024) // default 64KB start, max 1MB
-        for scanner.Scan() {
-            line := scanner.Text()
+		// Gemini with alt=sse returns SSE format: "data: {json}\n\n"
+		scanner := bufio.NewScanner(resp.Body)
+		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024) // default 64KB start, max 1MB
+		for scanner.Scan() {
+			line := scanner.Text()
 
-            if !strings.HasPrefix(line, "data: ") {
-                continue
-            }
+			if !strings.HasPrefix(line, "data: ") {
+				continue
+			}
 
-            data := strings.TrimPrefix(line, "data: ")
+			data := strings.TrimPrefix(line, "data: ")
 
-            // Parse the Gemini response chunk.
-            var geminiResp geminiResponse
-            if err := json.Unmarshal([]byte(data), &geminiResp); err != nil {
-                errCh <- fmt.Errorf("gemini: decode stream chunk: %w", err)
-                return
-            }
+			// Parse the Gemini response chunk.
+			var geminiResp geminiResponse
+			if err := json.Unmarshal([]byte(data), &geminiResp); err != nil {
+				errCh <- fmt.Errorf("gemini: decode stream chunk: %w", err)
+				return
+			}
 
-            // Convert each candidate to a StreamChunk.
-            chunk := toStreamChunk(&geminiResp, req.Model)
+			// Convert each candidate to a StreamChunk.
+			chunk := toStreamChunk(&geminiResp, req.Model)
 
-            select {
-            case chunks <- chunk:
-            case <-ctx.Done():
-                return
-            }
-        }
+			select {
+			case chunks <- chunk:
+			case <-ctx.Done():
+				return
+			}
+		}
 
-        if err := scanner.Err(); err != nil {
-            errCh <- fmt.Errorf("gemini: read stream: %w", err)
-        }
-    }()
+		if err := scanner.Err(); err != nil {
+			errCh <- fmt.Errorf("gemini: read stream: %w", err)
+		}
+	}()
 
-    return chunks, errCh
+	return chunks, errCh
 }
 
 // toStreamChunk converts a Gemini streaming response to our unified StreamChunk.
 func toStreamChunk(gr *geminiResponse, model string) *models.StreamChunk {
-    chunk := &models.StreamChunk{
-        Object: "chat.completion.chunk",
-        Model:  model,
-    }
+	chunk := &models.StreamChunk{
+		Object: "chat.completion.chunk",
+		Model:  model,
+	}
 
-    for i, cand := range gr.Candidates {
-        var content string
-        for _, part := range cand.Content.Parts {
-            content += part.Text
-        }
+	for i, cand := range gr.Candidates {
+		var content string
+		for _, part := range cand.Content.Parts {
+			content += part.Text
+		}
 
-        delta := models.StreamDelta{
-            Index: i,
-            Delta: models.Delta{
-                Content: content,
-            },
-        }
+		delta := models.StreamDelta{
+			Index: i,
+			Delta: models.Delta{
+				Content: content,
+			},
+		}
 
-        if cand.FinishReason != "" {
-            delta.FinishReason = mapFinishReason(cand.FinishReason)
-        }
+		if cand.FinishReason != "" {
+			delta.FinishReason = mapFinishReason(cand.FinishReason)
+		}
 
-        chunk.Choices = append(chunk.Choices, delta)
-    }
+		chunk.Choices = append(chunk.Choices, delta)
+	}
 
-    return chunk
+	return chunk
 }
 
 func (c *Client) ListModels(ctx context.Context) ([]models.ModelInfo, error) {
-    url := fmt.Sprintf("%s/models", c.baseURL)
+	url := fmt.Sprintf("%s/models", c.baseURL)
 
-    httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-    if err != nil {
-        return nil, fmt.Errorf("gemini: create request: %w", err)
-    }
-    c.setHeaders(httpReq)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("gemini: create request: %w", err)
+	}
+	c.setHeaders(httpReq)
 
-    resp, err := c.httpClient.Do(httpReq)
-    if err != nil {
-        return nil, fmt.Errorf("gemini: list models: %w", err)
-    }
-    defer resp.Body.Close()
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("gemini: list models: %w", err)
+	}
+	defer resp.Body.Close()
 
-    if resp.StatusCode != http.StatusOK {
-        return nil, fmt.Errorf("gemini: list models returned status %d", resp.StatusCode)
-    }
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("gemini: list models returned status %d", resp.StatusCode)
+	}
 
-    var result struct {
-        Models []struct {
-            Name string `json:"name"` // "models/gemini-2.0-flash"
-        } `json:"models"`
-    }
-    if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-        return nil, fmt.Errorf("gemini: decode models: %w", err)
-    }
+	var result struct {
+		Models []struct {
+			Name string `json:"name"` // "models/gemini-2.0-flash"
+		} `json:"models"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("gemini: decode models: %w", err)
+	}
 
-    var infos []models.ModelInfo
-    for _, m := range result.Models {
-        // Strip "models/" prefix to get just the model ID.
-        id := strings.TrimPrefix(m.Name, "models/")
-        infos = append(infos, models.ModelInfo{
-            ID:      id,
-            Object:  "model",
-            OwnedBy: "google",
-        })
-    }
+	var infos []models.ModelInfo
+	for _, m := range result.Models {
+		// Strip "models/" prefix to get just the model ID.
+		id := strings.TrimPrefix(m.Name, "models/")
+		infos = append(infos, models.ModelInfo{
+			ID:      id,
+			Object:  "model",
+			OwnedBy: "google",
+		})
+	}
 
-    return infos, nil
+	return infos, nil
 }
 
 func (c *Client) HealthCheck(ctx context.Context) error {
-    ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-    defer cancel()
-    _, err := c.ListModels(ctx)
-    return err
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	_, err := c.ListModels(ctx)
+	return err
 }

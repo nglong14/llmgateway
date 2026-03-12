@@ -25,7 +25,9 @@ import (
 )
 
 func main() {
-	godotenv.Load()
+	if err := godotenv.Load(); err != nil {
+		log.Printf("WARNING: .env file not loaded: %v", err)
+	}
 	// Parse --config flag.
 	configPath := flag.String("config", "configs/gateway.yaml", "path to YAML config file")
 	flag.Parse()
@@ -34,6 +36,9 @@ func main() {
 	cfg, err := config.Load(*configPath)
 	if err != nil {
 		log.Fatalf("failed to load config: %v", err)
+	}
+	if err := cfg.Validate(); err != nil {
+		log.Fatalf("invalid config: %v", err)
 	}
 
 	// Create provider registry and register providers.
@@ -134,7 +139,7 @@ func main() {
 		Addr:         cfg.Server.Address,
 		Handler:      r,
 		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 60 * time.Second,
+		WriteTimeout: 0,
 		IdleTimeout:  120 * time.Second,
 	}
 
