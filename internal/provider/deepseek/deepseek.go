@@ -64,7 +64,7 @@ func (c *Client) ChatCompletion(ctx context.Context, req *models.ChatCompletionR
 
 	// Check for HTTP errors.
 	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 		return nil, fmt.Errorf("deepseek: API error (status %d): %s", resp.StatusCode, string(respBody))
 	}
 
@@ -114,7 +114,7 @@ func (c *Client) ChatCompletionStream(ctx context.Context, req *models.ChatCompl
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			respBody, _ := io.ReadAll(resp.Body)
+			respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 			errCh <- fmt.Errorf("deepseek: API error (status %d): %s", resp.StatusCode, string(respBody))
 			return
 		}

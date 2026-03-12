@@ -152,7 +152,7 @@ func (c *Client) ChatCompletion(ctx context.Context, req *models.ChatCompletionR
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 		return nil, fmt.Errorf("anthropic: API error (status %d): %s", resp.StatusCode, string(respBody))
 	}
 
@@ -198,7 +198,7 @@ func (c *Client) ChatCompletionStream(ctx context.Context, req *models.ChatCompl
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			respBody, _ := io.ReadAll(resp.Body)
+			respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 			errCh <- fmt.Errorf("anthropic: API error (status %d): %s", resp.StatusCode, string(respBody))
 			return
 		}
