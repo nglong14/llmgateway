@@ -34,6 +34,12 @@ func New(apiKey, baseURL string) *Client {
 
 func (c *Client) Name() string { return "gemini" }
 
+// setHeaders adds Gemini-specific headers (auth + content type) to the request.
+func (c *Client) setHeaders(req *http.Request) {
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-goog-api-key", c.apiKey)
+}
+
 // toGeminiRequest converts unified request into Gemini's native format
 func toGeminiRequest(req *models.ChatCompletionRequest) *geminiRequest {
 	gr := &geminiRequest{}
@@ -130,15 +136,15 @@ func (c *Client) ChatCompletion(ctx context.Context, req *models.ChatCompletionR
 		return nil, fmt.Errorf("gemini: marshal request: %w", err)
 	}
 
-	// Build URL: /v1beta/models/{model}:generateContent?key=API_KEY
-	url := fmt.Sprintf("%s/models/%s:generateContent?key=%s",
-		c.baseURL, req.Model, c.apiKey)
+	// Build URL: /v1beta/models/{model}:generateContent
+	url := fmt.Sprintf("%s/models/%s:generateContent",
+		c.baseURL, req.Model)
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("gemini: create request: %w", err)
 	}
-	httpReq.Header.Set("Content-Type", "application/json")
+	c.setHeaders(httpReq)
 
 	// Send request.
 	resp, err := c.httpClient.Do(httpReq)
@@ -179,15 +185,15 @@ func (c *Client) ChatCompletionStream(ctx context.Context, req *models.ChatCompl
         }
 
         // Use streamGenerateContent endpoint.
-        url := fmt.Sprintf("%s/models/%s:streamGenerateContent?alt=sse&key=%s",
-            c.baseURL, req.Model, c.apiKey)
+        url := fmt.Sprintf("%s/models/%s:streamGenerateContent?alt=sse",
+            c.baseURL, req.Model)
 
         httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
         if err != nil {
             errCh <- fmt.Errorf("gemini: create request: %w", err)
             return
         }
-        httpReq.Header.Set("Content-Type", "application/json")
+        c.setHeaders(httpReq)
 
         resp, err := c.httpClient.Do(httpReq)
         if err != nil {
@@ -204,6 +210,7 @@ func (c *Client) ChatCompletionStream(ctx context.Context, req *models.ChatCompl
 
         // Gemini with alt=sse returns SSE format: "data: {json}\n\n"
         scanner := bufio.NewScanner(resp.Body)
+        scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024) // default 64KB start, max 1MB
         for scanner.Scan() {
             line := scanner.Text()
 
@@ -269,12 +276,13 @@ func toStreamChunk(gr *geminiResponse, model string) *models.StreamChunk {
 }
 
 func (c *Client) ListModels(ctx context.Context) ([]models.ModelInfo, error) {
-    url := fmt.Sprintf("%s/models?key=%s", c.baseURL, c.apiKey)
+    url := fmt.Sprintf("%s/models", c.baseURL)
 
     httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
     if err != nil {
         return nil, fmt.Errorf("gemini: create request: %w", err)
     }
+    c.setHeaders(httpReq)
 
     resp, err := c.httpClient.Do(httpReq)
     if err != nil {

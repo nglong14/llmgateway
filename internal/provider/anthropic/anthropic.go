@@ -206,6 +206,7 @@ func (c *Client) ChatCompletionStream(ctx context.Context, req *models.ChatCompl
 		// Parse Anthropic SSE events.
 		// Format: "event: <type>\ndata: <json>\n\n"
 		scanner := bufio.NewScanner(resp.Body)
+		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024) // default 64KB start, max 1MB
 		for scanner.Scan() {
 			line := scanner.Text()
 

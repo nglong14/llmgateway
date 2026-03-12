@@ -121,6 +121,7 @@ func (c *Client) ChatCompletionStream(ctx context.Context, req *models.ChatCompl
 
 		// Read SSE events line by line.
 		scanner := bufio.NewScanner(resp.Body)
+		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024) // default 64KB start, max 1MB
 		for scanner.Scan() {
 			line := scanner.Text()
 

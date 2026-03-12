@@ -17,7 +17,7 @@ import (
 // immediately with a 503-style error instead of hitting the upstream provider.
 type CircuitBreakerProvider struct {
 	wrapped provider.Provider
-	cb      *gobreaker.CircuitBreaker[any]
+	cb      *gobreaker.TwoStepCircuitBreaker[any]
 }
 
 // NewCircuitBreakerProvider wraps the given provider with a circuit breaker
@@ -47,7 +47,7 @@ func NewCircuitBreakerProvider(p provider.Provider, cfg config.CircuitBreakerCon
 
 	return &CircuitBreakerProvider{
 		wrapped: p,
-		cb:      gobreaker.NewCircuitBreaker[any](settings),
+		cb:      gobreaker.NewTwoStepCircuitBreaker[any](settings),
 	}
 }
 
@@ -58,30 +58,25 @@ func (c *CircuitBreakerProvider) Name() string {
 
 // ChatCompletion runs the request through the circuit breaker.
 func (c *CircuitBreakerProvider) ChatCompletion(ctx context.Context, req *models.ChatCompletionRequest) (*models.ChatCompletionResponse, error) {
-	result, err := c.cb.Execute(func() (any, error) {
-		return c.wrapped.ChatCompletion(ctx, req)
-	})
+	done, err := c.cb.Allow()
 	if err != nil {
 		return nil, wrapCBError(c.wrapped.Name(), err)
 	}
-	return result.(*models.ChatCompletionResponse), nil
+
+	resp, err := c.wrapped.ChatCompletion(ctx, req)
+	done(err) // report outcome to gobreaker
+	if err != nil {
+		return nil, err
+	}
+	return resp, nil
 }
 
 // ChatCompletionStream runs the streaming request through the circuit breaker.
-// Only the initial connection is guarded; once the stream starts, chunks flow directly.
+// The circuit is checked upfront; the final outcome (success/failure) is
+// reported asynchronously when the stream completes via proxy channels.
 func (c *CircuitBreakerProvider) ChatCompletionStream(ctx context.Context, req *models.ChatCompletionRequest) (<-chan *models.StreamChunk, <-chan error) {
-	// We guard the stream creation in the circuit breaker.
-	// If the circuit is open, we return an immediate error on the error channel.
-	type streamResult struct {
-		chunks <-chan *models.StreamChunk
-		errs   <-chan error
-	}
-
-	result, err := c.cb.Execute(func() (any, error) {
-		chunks, errs := c.wrapped.ChatCompletionStream(ctx, req)
-		return &streamResult{chunks: chunks, errs: errs}, nil
-	})
-
+	// Check if the circuit allows the request.
+	done, err := c.cb.Allow()
 	if err != nil {
 		// Circuit is open — return closed channels with an error.
 		errCh := make(chan error, 1)
@@ -94,19 +89,50 @@ func (c *CircuitBreakerProvider) ChatCompletionStream(ctx context.Context, req *
 		return chunkCh, errCh
 	}
 
-	sr := result.(*streamResult)
-	return sr.chunks, sr.errs
+	// Call the real provider.
+	chunks, errCh := c.wrapped.ChatCompletionStream(ctx, req)
+
+	// Create proxy channels to intercept the stream outcome.
+	proxyChunks := make(chan *models.StreamChunk, 10)
+	proxyErr := make(chan error, 1)
+
+	go func() {
+		defer close(proxyChunks)
+		defer close(proxyErr)
+
+		// Forward all chunks from the real provider to the handler.
+		for chunk := range chunks {
+			proxyChunks <- chunk
+		}
+
+		// Wait for the final error status from the provider.
+		err := <-errCh
+
+		// Report the stream outcome to gobreaker.
+		done(err)
+
+		// Forward the error (if any) to the handler.
+		if err != nil {
+			proxyErr <- err
+		}
+	}()
+
+	return proxyChunks, proxyErr
 }
 
 // ListModels runs the list call through the circuit breaker.
 func (c *CircuitBreakerProvider) ListModels(ctx context.Context) ([]models.ModelInfo, error) {
-	result, err := c.cb.Execute(func() (any, error) {
-		return c.wrapped.ListModels(ctx)
-	})
+	done, err := c.cb.Allow()
 	if err != nil {
 		return nil, wrapCBError(c.wrapped.Name(), err)
 	}
-	return result.([]models.ModelInfo), nil
+
+	result, err := c.wrapped.ListModels(ctx)
+	done(err) // report outcome to gobreaker
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 // HealthCheck delegates directly — we don't want the health probe to trip the breaker.
@@ -124,3 +150,4 @@ func wrapCBError(providerName string, err error) error {
 	}
 	return err
 }
+
