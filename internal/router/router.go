@@ -2,6 +2,8 @@
 package router
 
 import (
+	"net/http"
+
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/nglong14/llmgateway/internal/metrics"
@@ -9,8 +11,14 @@ import (
 	"github.com/nglong14/llmgateway/internal/provider"
 )
 
+// RateLimitMiddleware is satisfied by both the in-memory RateLimiter
+// and the Redis-backed RedisRateLimiter.
+type RateLimitMiddleware interface {
+	Handler(next http.Handler) http.Handler
+}
+
 // Chi router with all routes and middleware configured
-func New(registry *provider.Registry, rl *middleware.RateLimiter) chi.Router {
+func New(registry *provider.Registry, rl RateLimitMiddleware) chi.Router {
 	r := chi.NewRouter()
 
 	//Middleware

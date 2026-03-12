@@ -18,6 +18,7 @@ type Config struct {
 	RateLimit          RateLimitConfig                    `yaml:"rate_limit"`
 	ProviderRateLimits map[string]ProviderRateLimitConfig `yaml:"provider_rate_limits"`
 	CircuitBreaker     CircuitBreakerConfig               `yaml:"circuit_breaker"`
+	Redis              RedisConfig                        `yaml:"redis"`
 }
 
 // HTTP server settings.
@@ -50,6 +51,14 @@ type CircuitBreakerConfig struct {
 	MaxRequests uint32        `yaml:"max_requests"`
 	Interval    time.Duration `yaml:"interval"`
 	Timeout     time.Duration `yaml:"timeout"`
+}
+
+// RedisConfig holds Redis connection settings.
+// When Addr is empty, the gateway falls back to in-memory state.
+type RedisConfig struct {
+	Addr     string `yaml:"addr"`
+	Password string `yaml:"password"`
+	DB       int    `yaml:"db"`
 }
 
 // Matches ${ENV_VAR} placeholders.

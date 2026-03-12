@@ -58,7 +58,7 @@ func NewRateLimiter(rps float64, burst int, cleanupInterval time.Duration, trust
 // Handler returns Chi-compatible middleware that enforces the rate limit.
 func (rl *RateLimiter) Handler(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ip := rl.extractIP(r)
+		ip := rl.ExtractIP(r)
 		limiter := rl.getLimiter(ip)
 
 		if !limiter.Allow() {
@@ -135,9 +135,9 @@ func (rl *RateLimiter) cleanupLoop(interval time.Duration) {
 	}
 }
 
-// extractIP pulls the client IP from the request. It only trusts
+// ExtractIP pulls the client IP from the request. It only trusts
 // X-Forwarded-For / X-Real-IP when RemoteAddr belongs to a trusted proxy.
-func (rl *RateLimiter) extractIP(r *http.Request) string {
+func (rl *RateLimiter) ExtractIP(r *http.Request) string {
 	// Get the direct connection IP (cannot be spoofed).
 	remoteIP, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {

@@ -43,3 +43,8 @@ circuit_breaker:
   max_requests: 5
   interval: 60s
   timeout: 30s
+
+redis:
+  addr: "${REDIS_ADDR}"
+  password: "${REDIS_PASSWORD}"
+  db: 0

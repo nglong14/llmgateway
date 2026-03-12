@@ -5,6 +5,15 @@ services:
       - "8080:8080"
     env_file:
       - .env
+    depends_on:
+      - redis
+    networks:
+      - gateway-net
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
     networks:
       - gateway-net
 

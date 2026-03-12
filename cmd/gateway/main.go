@@ -20,6 +20,7 @@ import (
 	"github.com/nglong14/llmgateway/internal/provider/deepseek"
 	"github.com/nglong14/llmgateway/internal/provider/gemini"
 	"github.com/nglong14/llmgateway/internal/provider/openai"
+	gatewayredis "github.com/nglong14/llmgateway/internal/redis"
 	"github.com/nglong14/llmgateway/internal/router"
 )
 
@@ -38,6 +39,19 @@ func main() {
 	// Create provider registry and register providers.
 	registry := provider.NewRegistry()
 
+	// Connect to Redis (used by both per-IP and per-provider rate limiters).
+	var redisClient *gatewayredis.Client
+	if cfg.Redis.Addr != "" {
+		rc, err := gatewayredis.New(cfg.Redis.Addr, cfg.Redis.Password, cfg.Redis.DB)
+		if err != nil {
+			log.Printf("WARNING: Redis unavailable (%v) — falling back to in-memory middleware", err)
+		} else {
+			redisClient = rc
+			defer redisClient.Close()
+			log.Printf("Connected to Redis at %s", cfg.Redis.Addr)
+		}
+	}
+
 	// Shared middleware configs.
 	cbCfg := cfg.CircuitBreaker
 	providerRL := cfg.ProviderRateLimits
@@ -47,6 +61,9 @@ func main() {
 	wrapProvider := func(p provider.Provider, name string) provider.Provider {
 		wrapped := middleware.NewCircuitBreakerProvider(p, cbCfg)
 		if rlCfg, ok := providerRL[name]; ok && rlCfg.RPM > 0 {
+			if redisClient != nil {
+				return middleware.NewRedisRateLimitedProvider(wrapped, redisClient.RDB, rlCfg)
+			}
 			return middleware.NewRateLimitedProvider(wrapped, rlCfg)
 		}
 		return wrapped
@@ -76,7 +93,7 @@ func main() {
 		log.Println("Registered provider: deepseek")
 	}
 
-	// Initialize rate limiter with config values (default to safe values if zero).
+	// Rate limiter defaults.
 	rps := cfg.RateLimit.RPS
 	if rps == 0 {
 		rps = 10
@@ -85,13 +102,25 @@ func main() {
 	if burst == 0 {
 		burst = 20
 	}
+
+	// Build the in-memory rate limiter (always needed for IP extraction + fallback).
 	cleanupInterval := cfg.RateLimit.CleanupInterval
 	if cleanupInterval == 0 {
 		cleanupInterval = 5 * time.Minute
 	}
-	rl := middleware.NewRateLimiter(rps, burst, cleanupInterval, cfg.RateLimit.TrustedProxies)
-	defer rl.Stop()
-	log.Printf("Rate limiter: %.0f req/s, burst %d, trusted proxies: %v", rps, burst, cfg.RateLimit.TrustedProxies)
+	memRL := middleware.NewRateLimiter(rps, burst, cleanupInterval, cfg.RateLimit.TrustedProxies)
+	defer memRL.Stop()
+
+	// Choose per-IP rate limiter: Redis (distributed) or in-memory (single-instance fallback).
+	var rl router.RateLimitMiddleware
+	if redisClient != nil {
+		rl = middleware.NewRedisRateLimiter(redisClient.RDB, rps, burst, memRL.ExtractIP)
+		log.Printf("Per-IP rate limiter: Redis-backed (%.0f req/s, burst %d)", rps, burst)
+	} else {
+		rl = memRL
+		log.Printf("Per-IP rate limiter: in-memory (%.0f req/s, burst %d)", rps, burst)
+	}
+
 
 	// Initialize Prometheus metrics.
 	metrics.Init()
