@@ -129,7 +129,20 @@ func main() {
 
 	// Initialize Prometheus metrics.
 	metrics.Init()
-	log.Println("Prometheus metrics available at /metrics")
+	
+	// Start internal administrative server for metrics
+	adminMux := http.NewServeMux()
+	adminMux.Handle("/metrics", metrics.Handler())
+	adminSrv := &http.Server{
+		Addr:    ":9091",
+		Handler: adminMux,
+	}
+	go func() {
+		log.Println("Internal admin server (metrics) listening on :9091")
+		if err := adminSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("admin server error: %v", err)
+		}
+	}()
 
 	// Create router with all routes and middleware.
 	r := router.New(registry, rl)
@@ -160,7 +173,10 @@ func main() {
 	defer cancel()
 
 	if err := srv.Shutdown(ctx); err != nil {
-		log.Fatalf("forced shutdown: %v", err)
+		log.Fatalf("main server forced shutdown: %v", err)
 	}
-	fmt.Println("Server stopped.")
+	if err := adminSrv.Shutdown(ctx); err != nil {
+		log.Fatalf("admin server forced shutdown: %v", err)
+	}
+	fmt.Println("Servers stopped.")
 }

@@ -6,7 +6,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
-	"github.com/nglong14/llmgateway/internal/metrics"
 	"github.com/nglong14/llmgateway/internal/middleware"
 	"github.com/nglong14/llmgateway/internal/provider"
 )
@@ -26,12 +25,10 @@ func New(registry *provider.Registry, rl RateLimitMiddleware) chi.Router {
 	r.Use(chimiddleware.Recoverer)
 	r.Use(middleware.PrometheusMiddleware)
 
-	// Prometheus /metrics endpoint (serves text/plain, outside JSON header).
-	r.Get("/metrics", metrics.Handler().ServeHTTP)
+	// Prometheus metrics have been moved to a separate admin server in main.go
 
-	// All API routes share the JSON content-type header.
+	// All API routes.
 	r.Group(func(api chi.Router) {
-		api.Use(chimiddleware.SetHeader("Content-Type", "application/json"))
 		api.Use(rl.Handler)
 
 		//Handlers

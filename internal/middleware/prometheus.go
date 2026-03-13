@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/nglong14/llmgateway/internal/metrics"
 )
 
@@ -18,6 +19,13 @@ type statusRecorder struct {
 func (sr *statusRecorder) WriteHeader(code int) {
 	sr.statusCode = code
 	sr.ResponseWriter.WriteHeader(code)
+}
+
+// Flush implements the http.Flusher interface to allow SSE streaming to work.
+func (sr *statusRecorder) Flush() {
+	if flusher, ok := sr.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
 }
 
 // PrometheusMiddleware records HTTP-level metrics for every request:
@@ -35,7 +43,15 @@ func PrometheusMiddleware(next http.Handler) http.Handler {
 		duration := time.Since(start).Seconds()
 		status := strconv.Itoa(recorder.statusCode)
 
-		metrics.HTTPRequestsTotal.WithLabelValues(r.Method, r.URL.Path, status).Inc()
-		metrics.HTTPRequestDuration.WithLabelValues(r.Method, r.URL.Path).Observe(duration)
+		// Use the matched route pattern (if available) to avoid high cardinality.
+		// If chi hasn't routed it yet (e.g. 404), fallback to a generic label.
+		routeContext := chi.RouteContext(r.Context())
+		pathPattern := "unknown_route"
+		if routeContext != nil && routeContext.RoutePattern() != "" {
+			pathPattern = routeContext.RoutePattern()
+		}
+
+		metrics.HTTPRequestsTotal.WithLabelValues(r.Method, pathPattern, status).Inc()
+		metrics.HTTPRequestDuration.WithLabelValues(r.Method, pathPattern).Observe(duration)
 	})
 }

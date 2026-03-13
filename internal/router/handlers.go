@@ -19,6 +19,7 @@ type Handlers struct {
 }
 
 func (h *Handlers) Health(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
@@ -35,6 +36,7 @@ func (h *Handlers) ListModels(w http.ResponseWriter, r *http.Request) {
 		allModels = append(allModels, providerModels...)
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(models.ModelListResponse{
 		Object: "list",
@@ -42,8 +44,14 @@ func (h *Handlers) ListModels(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// maxRequestBodyBytes is the maximum allowed size for incoming request bodies (1 MB).
+const maxRequestBodyBytes = 1 << 20
+
 // ChatCompletion handles both streaming and non-streaming chat requests.
 func (h *Handlers) ChatCompletion(w http.ResponseWriter, r *http.Request) {
+	// Limit request body size to prevent oversized payloads.
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+
 	// Parse request body.
 	var req models.ChatCompletionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -100,6 +108,7 @@ func (h *Handlers) handleNonStream(w http.ResponseWriter, r *http.Request, p pro
 		metrics.ProviderTokensTotal.WithLabelValues(p.Name(), "completion").Add(float64(resp.Usage.CompletionTokens))
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(resp)
 }
