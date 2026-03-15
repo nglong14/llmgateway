@@ -11,6 +11,7 @@ import (
 	"github.com/nglong14/llmgateway/internal/models"
 	"github.com/nglong14/llmgateway/internal/provider"
 	"github.com/nglong14/llmgateway/internal/streaming"
+	"strings"
 )
 
 // Holds dependencies for all endpoint handlers.
@@ -84,6 +85,28 @@ func (h *Handlers) ChatCompletion(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func handleProviderError(w http.ResponseWriter, p provider.Provider, err error, endpoint string) {
+	errStr := err.Error()
+	statusLabel := "error"
+
+	if strings.Contains(errStr, "circuit breaker is open") || strings.Contains(errStr, "circuit breaker half-open") {
+		statusLabel = "circuit_breaker_open"
+		metrics.ProviderRequestsTotal.WithLabelValues(p.Name(), endpoint, statusLabel).Inc()
+		models.WriteServiceUnavailable(w, errStr)
+		return
+	} 
+
+	if strings.Contains(errStr, "rate limit exceeded") {
+		statusLabel = "rate_limit_exceeded"
+		metrics.ProviderRequestsTotal.WithLabelValues(p.Name(), endpoint, statusLabel).Inc()
+		models.WriteRateLimited(w, errStr)
+		return
+	}
+
+	metrics.ProviderRequestsTotal.WithLabelValues(p.Name(), endpoint, statusLabel).Inc()
+	models.WriteProviderError(w, errStr)
+}
+
 func (h *Handlers) handleNonStream(w http.ResponseWriter, r *http.Request, p provider.Provider, req *models.ChatCompletionRequest) {
 	start := time.Now()
 
@@ -93,8 +116,7 @@ func (h *Handlers) handleNonStream(w http.ResponseWriter, r *http.Request, p pro
 	metrics.ProviderRequestDuration.WithLabelValues(p.Name(), "chat_completion").Observe(duration)
 
 	if err != nil {
-		metrics.ProviderRequestsTotal.WithLabelValues(p.Name(), "chat_completion", "error").Inc()
-		models.WriteProviderError(w, err.Error())
+		handleProviderError(w, p, err, "chat_completion")
 		return
 	}
 
@@ -116,29 +138,56 @@ func (h *Handlers) handleNonStream(w http.ResponseWriter, r *http.Request, p pro
 func (h *Handlers) handleStream(w http.ResponseWriter, r *http.Request, p provider.Provider, req *models.ChatCompletionRequest) {
 	start := time.Now()
 
-	// Switch to SSE headers.
-	streaming.SetSSEHeaders(w)
-
 	chunks, errCh := p.ChatCompletionStream(r.Context(), req)
 
-	for chunk := range chunks {
-		if err := streaming.WriteSSEChunk(w, chunk); err != nil {
-			log.Printf("error writing SSE chunk: %v", err)
-			metrics.ProviderRequestsTotal.WithLabelValues(p.Name(), "chat_completion_stream", "error").Inc()
-			return
+	// Wait for the first event to decide whether to set SSE headers or return an HTTP error.
+	headersSent := false
+
+	for {
+		select {
+		case err, ok := <-errCh:
+			if !ok {
+				// errCh closed, stream is done.
+				if headersSent {
+					streaming.WriteSSEDone(w)
+				}
+				return
+			}
+			if err != nil {
+				if !headersSent {
+					// Failed immediately before any chunks were sent, return HTTP error.
+					handleProviderError(w, p, err, "chat_completion_stream")
+					metrics.ProviderRequestDuration.WithLabelValues(p.Name(), "chat_completion_stream").Observe(time.Since(start).Seconds())
+					return
+				}
+				// Headers already sent, log the error and terminate the stream gracefully.
+				log.Printf("streaming error: %v", err)
+				metrics.ProviderRequestsTotal.WithLabelValues(p.Name(), "chat_completion_stream", "error").Inc()
+				metrics.ProviderRequestDuration.WithLabelValues(p.Name(), "chat_completion_stream").Observe(time.Since(start).Seconds())
+				streaming.WriteSSEDone(w)
+				return
+			}
+
+		case chunk, ok := <-chunks:
+			if !ok {
+				// chunks closed, exit loop and wait for errCh.
+				chunks = nil
+				continue
+			}
+			if !headersSent {
+				streaming.SetSSEHeaders(w)
+				headersSent = true
+			}
+			if err := streaming.WriteSSEChunk(w, chunk); err != nil {
+				log.Printf("error writing SSE chunk: %v", err)
+				metrics.ProviderRequestsTotal.WithLabelValues(p.Name(), "chat_completion_stream", "error").Inc()
+				return
+			}
+		}
+
+		// If chunks channel is nil and errCh is closed or successfully processed, we are done.
+		if chunks == nil {
+			// We must wait for errCh to give us the final error or close.
 		}
 	}
-
-	// Check for streaming errors.
-	if err := <-errCh; err != nil {
-		log.Printf("streaming error: %v", err)
-		metrics.ProviderRequestsTotal.WithLabelValues(p.Name(), "chat_completion_stream", "error").Inc()
-		metrics.ProviderRequestDuration.WithLabelValues(p.Name(), "chat_completion_stream").Observe(time.Since(start).Seconds())
-		streaming.WriteSSEDone(w)
-		return
-	}
-
-	metrics.ProviderRequestsTotal.WithLabelValues(p.Name(), "chat_completion_stream", "success").Inc()
-	metrics.ProviderRequestDuration.WithLabelValues(p.Name(), "chat_completion_stream").Observe(time.Since(start).Seconds())
-	streaming.WriteSSEDone(w)
 }
