@@ -31,3 +31,5 @@ go.work.sum
 # .idea/
 .agent/
 .vscode
+logs/
+bin/
