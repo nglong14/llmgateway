@@ -4,10 +4,12 @@ package middleware
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"golang.org/x/time/rate"
 
 	"github.com/nglong14/llmgateway/internal/config"
+	"github.com/nglong14/llmgateway/internal/ctxutil"
 	"github.com/nglong14/llmgateway/internal/models"
 	"github.com/nglong14/llmgateway/internal/provider"
 )
@@ -48,6 +50,10 @@ func (r *RateLimitedProvider) Name() string {
 // ChatCompletion checks the per-provider rate limit, then delegates.
 func (r *RateLimitedProvider) ChatCompletion(ctx context.Context, req *models.ChatCompletionRequest) (*models.ChatCompletionResponse, error) {
 	if !r.limiter.Allow() {
+		ctxutil.Logger(ctx).Warn("provider rate limit exceeded",
+			slog.String("provider", r.wrapped.Name()),
+			slog.Float64("limit_rpm", r.rpm),
+		)
 		return nil, r.limitError()
 	}
 	return r.wrapped.ChatCompletion(ctx, req)
@@ -58,6 +64,10 @@ func (r *RateLimitedProvider) ChatCompletion(ctx context.Context, req *models.Ch
 // chunks flow freely (same approach as the circuit breaker).
 func (r *RateLimitedProvider) ChatCompletionStream(ctx context.Context, req *models.ChatCompletionRequest) (<-chan *models.StreamChunk, <-chan error) {
 	if !r.limiter.Allow() {
+		ctxutil.Logger(ctx).Warn("provider rate limit exceeded",
+			slog.String("provider", r.wrapped.Name()),
+			slog.Float64("limit_rpm", r.rpm),
+		)
 		// Return closed chunk channel + error channel (same pattern as circuit breaker).
 		errCh := make(chan error, 1)
 		errCh <- r.limitError()
@@ -74,6 +84,10 @@ func (r *RateLimitedProvider) ChatCompletionStream(ctx context.Context, req *mod
 // ListModels checks the per-provider rate limit, then delegates.
 func (r *RateLimitedProvider) ListModels(ctx context.Context) ([]models.ModelInfo, error) {
 	if !r.limiter.Allow() {
+		ctxutil.Logger(ctx).Warn("provider rate limit exceeded",
+			slog.String("provider", r.wrapped.Name()),
+			slog.Float64("limit_rpm", r.rpm),
+		)
 		return nil, r.limitError()
 	}
 	return r.wrapped.ListModels(ctx)

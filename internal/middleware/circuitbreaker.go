@@ -4,10 +4,12 @@ package middleware
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/sony/gobreaker/v2"
 
 	"github.com/nglong14/llmgateway/internal/config"
+	"github.com/nglong14/llmgateway/internal/ctxutil"
 	"github.com/nglong14/llmgateway/internal/models"
 	"github.com/nglong14/llmgateway/internal/provider"
 )
@@ -60,6 +62,10 @@ func (c *CircuitBreakerProvider) Name() string {
 func (c *CircuitBreakerProvider) ChatCompletion(ctx context.Context, req *models.ChatCompletionRequest) (*models.ChatCompletionResponse, error) {
 	done, err := c.cb.Allow()
 	if err != nil {
+		ctxutil.Logger(ctx).Warn("circuit breaker denied request",
+			slog.String("provider", c.wrapped.Name()),
+			slog.String("error", err.Error()),
+		)
 		return nil, wrapCBError(c.wrapped.Name(), err)
 	}
 
@@ -78,6 +84,11 @@ func (c *CircuitBreakerProvider) ChatCompletionStream(ctx context.Context, req *
 	// Check if the circuit allows the request.
 	done, err := c.cb.Allow()
 	if err != nil {
+		ctxutil.Logger(ctx).Warn("circuit breaker denied request",
+			slog.String("provider", c.wrapped.Name()),
+			slog.String("error", err.Error()),
+		)
+
 		// Circuit is open — return closed channels with an error.
 		errCh := make(chan error, 1)
 		errCh <- wrapCBError(c.wrapped.Name(), err)
@@ -124,6 +135,10 @@ func (c *CircuitBreakerProvider) ChatCompletionStream(ctx context.Context, req *
 func (c *CircuitBreakerProvider) ListModels(ctx context.Context) ([]models.ModelInfo, error) {
 	done, err := c.cb.Allow()
 	if err != nil {
+		ctxutil.Logger(ctx).Warn("circuit breaker denied request",
+			slog.String("provider", c.wrapped.Name()),
+			slog.String("error", err.Error()),
+		)
 		return nil, wrapCBError(c.wrapped.Name(), err)
 	}
 

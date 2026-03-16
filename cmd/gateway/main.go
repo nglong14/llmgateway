@@ -4,7 +4,8 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log"
+	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -25,8 +26,19 @@ import (
 )
 
 func main() {
+	// Initialize structured JSON logger
+	var logWriter io.Writer = os.Stdout
+	if _, err := os.Stat("/var/log/gateway"); err == nil {
+		logFile, err := os.OpenFile("/var/log/gateway/gateway.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+		if err == nil {
+			logWriter = io.MultiWriter(os.Stdout, logFile)
+		}
+	}
+	logger := slog.New(slog.NewJSONHandler(logWriter, nil))
+	slog.SetDefault(logger)
+
 	if err := godotenv.Load(); err != nil {
-		log.Printf("WARNING: .env file not loaded: %v", err)
+		slog.Warn("WARNING: .env file not loaded", slog.String("error", err.Error()))
 	}
 	// Parse --config flag.
 	configPath := flag.String("config", "configs/gateway.yaml", "path to YAML config file")
@@ -35,10 +47,12 @@ func main() {
 	// Load config.
 	cfg, err := config.Load(*configPath)
 	if err != nil {
-		log.Fatalf("failed to load config: %v", err)
+		slog.Error("failed to load config", slog.String("error", err.Error()))
+		os.Exit(1)
 	}
 	if err := cfg.Validate(); err != nil {
-		log.Fatalf("invalid config: %v", err)
+		slog.Error("invalid config", slog.String("error", err.Error()))
+		os.Exit(1)
 	}
 
 	// Create provider registry and register providers.
@@ -49,11 +63,11 @@ func main() {
 	if cfg.Redis.Addr != "" {
 		rc, err := gatewayredis.New(cfg.Redis.Addr, cfg.Redis.Password, cfg.Redis.DB)
 		if err != nil {
-			log.Printf("WARNING: Redis unavailable (%v) — falling back to in-memory middleware", err)
+			slog.Warn("Redis unavailable — falling back to in-memory middleware", slog.String("error", err.Error()))
 		} else {
 			redisClient = rc
 			defer redisClient.Close()
-			log.Printf("Connected to Redis at %s", cfg.Redis.Addr)
+			slog.Info("Connected to Redis", slog.String("address", cfg.Redis.Addr))
 		}
 	}
 
@@ -77,25 +91,25 @@ func main() {
 	if pc, ok := cfg.Providers["openai"]; ok {
 		oaiClient := openai.New(pc.APIKey, pc.BaseURL)
 		registry.Register(wrapProvider(oaiClient, "openai"), "gpt-", "o1-", "o3-", "o4-")
-		log.Println("Registered provider: openai")
+		slog.Info("Registered provider: openai")
 	}
 
 	if pc, ok := cfg.Providers["gemini"]; ok {
 		gClient := gemini.New(pc.APIKey, pc.BaseURL)
 		registry.Register(wrapProvider(gClient, "gemini"), "gemini-", "g-")
-		log.Println("Registered provider: gemini")
+		slog.Info("Registered provider: gemini")
 	}
 
 	if pc, ok := cfg.Providers["anthropic"]; ok {
 		aClient := anthropic.New(pc.APIKey, pc.BaseURL)
 		registry.Register(wrapProvider(aClient, "anthropic"), "claude-")
-		log.Println("Registered provider: anthropic")
+		slog.Info("Registered provider: anthropic")
 	}
 
 	if pc, ok := cfg.Providers["deepseek"]; ok {
 		dsClient := deepseek.New(pc.APIKey, pc.BaseURL)
 		registry.Register(wrapProvider(dsClient, "deepseek"), "deepseek-")
-		log.Println("Registered provider: deepseek")
+		slog.Info("Registered provider: deepseek")
 	}
 
 	// Rate limiter defaults.
@@ -120,10 +134,18 @@ func main() {
 	var rl router.RateLimitMiddleware
 	if redisClient != nil {
 		rl = middleware.NewRedisRateLimiter(redisClient.RDB, rps, burst, memRL.ExtractIP)
-		log.Printf("Per-IP rate limiter: Redis-backed (%.0f req/s, burst %d)", rps, burst)
+		slog.Info("Per-IP rate limiter initialized", 
+			slog.String("type", "redis"), 
+			slog.Float64("rps", rps), 
+			slog.Int("burst", burst),
+		)
 	} else {
 		rl = memRL
-		log.Printf("Per-IP rate limiter: in-memory (%.0f req/s, burst %d)", rps, burst)
+		slog.Info("Per-IP rate limiter initialized", 
+			slog.String("type", "in-memory"), 
+			slog.Float64("rps", rps), 
+			slog.Int("burst", burst),
+		)
 	}
 
 
@@ -138,9 +160,10 @@ func main() {
 		Handler: adminMux,
 	}
 	go func() {
-		log.Println("Internal admin server (metrics) listening on :9091")
+		slog.Info("Internal admin server (metrics) listening on :9091")
 		if err := adminSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("admin server error: %v", err)
+			slog.Error("admin server error", slog.String("error", err.Error()))
+			os.Exit(1)
 		}
 	}()
 
@@ -157,9 +180,10 @@ func main() {
 	}
 
 	go func() {
-		fmt.Printf("LLM Gateway listening on %s\n", cfg.Server.Address)
+		slog.Info("LLM Gateway listening", slog.String("address", cfg.Server.Address))
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("server error: %v", err)
+			slog.Error("server error", slog.String("error", err.Error()))
+			os.Exit(1)
 		}
 	}()
 
@@ -173,10 +197,12 @@ func main() {
 	defer cancel()
 
 	if err := srv.Shutdown(ctx); err != nil {
-		log.Fatalf("main server forced shutdown: %v", err)
+		slog.Error("main server forced shutdown", slog.String("error", err.Error()))
+		os.Exit(1)
 	}
 	if err := adminSrv.Shutdown(ctx); err != nil {
-		log.Fatalf("admin server forced shutdown: %v", err)
+		slog.Error("admin server forced shutdown", slog.String("error", err.Error()))
+		os.Exit(1)
 	}
-	fmt.Println("Servers stopped.")
+	slog.Info("Servers stopped.")
 }

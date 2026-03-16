@@ -4,12 +4,13 @@ package middleware
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/redis/go-redis/v9"
 
 	"github.com/nglong14/llmgateway/internal/config"
+	"github.com/nglong14/llmgateway/internal/ctxutil"
 	"github.com/nglong14/llmgateway/internal/models"
 	"github.com/nglong14/llmgateway/internal/provider"
 )
@@ -105,11 +106,18 @@ func (r *RedisRateLimitedProvider) checkLimit(ctx context.Context) error {
 	).Int()
 	if err != nil {
 		// Redis down — allow through, don't block the provider.
-		log.Printf("redis provider rate limiter error for %s (allowing request): %v", r.wrapped.Name(), err)
+		ctxutil.Logger(ctx).Warn("redis provider rate limiter error (allowing request)",
+			slog.String("provider", r.wrapped.Name()),
+			slog.String("error", err.Error()),
+		)
 		return nil
 	}
 
 	if result == 0 {
+		ctxutil.Logger(ctx).Warn("provider rate limit exceeded",
+			slog.String("provider", r.wrapped.Name()),
+			slog.Float64("limit_rpm", r.rpm),
+		)
 		return fmt.Errorf("provider %s: rate limit exceeded (%.0f RPM)", r.wrapped.Name(), r.rpm)
 	}
 

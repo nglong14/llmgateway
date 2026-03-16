@@ -21,7 +21,7 @@ func New(registry *provider.Registry, rl RateLimitMiddleware) chi.Router {
 	r := chi.NewRouter()
 
 	//Middleware
-	r.Use(chimiddleware.Logger)
+	r.Use(middleware.LoggingMiddleware)
 	r.Use(chimiddleware.Recoverer)
 	r.Use(middleware.PrometheusMiddleware)
 

@@ -2,6 +2,7 @@
 package middleware
 
 import (
+	"log/slog"
 	"net"
 	"net/http"
 	"strings"
@@ -11,6 +12,7 @@ import (
 
 	"golang.org/x/time/rate"
 
+	"github.com/nglong14/llmgateway/internal/ctxutil"
 	"github.com/nglong14/llmgateway/internal/models"
 )
 
@@ -62,6 +64,9 @@ func (rl *RateLimiter) Handler(next http.Handler) http.Handler {
 		limiter := rl.getLimiter(ip)
 
 		if !limiter.Allow() {
+			ctxutil.Logger(r.Context()).Warn("rate limit exceeded",
+				slog.String("ip", ip),
+			)
 			models.WriteRateLimited(w, "rate limit exceeded, try again later")
 			return
 		}

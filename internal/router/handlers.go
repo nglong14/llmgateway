@@ -3,10 +3,11 @@ package router
 
 import (
 	"encoding/json"
-	"log"
+	"log/slog"
 	"net/http"
 	"time"
 
+	"github.com/nglong14/llmgateway/internal/ctxutil"
 	"github.com/nglong14/llmgateway/internal/metrics"
 	"github.com/nglong14/llmgateway/internal/models"
 	"github.com/nglong14/llmgateway/internal/provider"
@@ -31,7 +32,10 @@ func (h *Handlers) ListModels(w http.ResponseWriter, r *http.Request) {
 	for _, p := range h.registry.ListAll() {
 		providerModels, err := p.ListModels(r.Context())
 		if err != nil {
-			log.Printf("warning: failed to list models from %s: %v", p.Name(), err)
+			ctxutil.Logger(r.Context()).Warn("failed to list models",
+				slog.String("provider", p.Name()),
+				slog.String("error", err.Error()),
+			)
 			continue
 		}
 		allModels = append(allModels, providerModels...)
@@ -85,7 +89,7 @@ func (h *Handlers) ChatCompletion(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handleProviderError(w http.ResponseWriter, p provider.Provider, err error, endpoint string) {
+func handleProviderError(w http.ResponseWriter, r *http.Request, p provider.Provider, err error, endpoint string) {
 	errStr := err.Error()
 	statusLabel := "error"
 
@@ -104,11 +108,22 @@ func handleProviderError(w http.ResponseWriter, p provider.Provider, err error, 
 	}
 
 	metrics.ProviderRequestsTotal.WithLabelValues(p.Name(), endpoint, statusLabel).Inc()
+	ctxutil.Logger(r.Context()).Error("provider error",
+		slog.String("provider", p.Name()),
+		slog.String("endpoint", endpoint),
+		slog.String("error", errStr),
+	)
 	models.WriteProviderError(w, errStr)
 }
 
 func (h *Handlers) handleNonStream(w http.ResponseWriter, r *http.Request, p provider.Provider, req *models.ChatCompletionRequest) {
 	start := time.Now()
+	logger := ctxutil.Logger(r.Context())
+
+	logger.Info("upstream provider call start",
+		slog.String("provider", p.Name()),
+		slog.String("model", req.Model),
+	)
 
 	resp, err := p.ChatCompletion(r.Context(), req)
 
@@ -116,11 +131,17 @@ func (h *Handlers) handleNonStream(w http.ResponseWriter, r *http.Request, p pro
 	metrics.ProviderRequestDuration.WithLabelValues(p.Name(), "chat_completion").Observe(duration)
 
 	if err != nil {
-		handleProviderError(w, p, err, "chat_completion")
+		handleProviderError(w, r, p, err, "chat_completion")
 		return
 	}
 
 	metrics.ProviderRequestsTotal.WithLabelValues(p.Name(), "chat_completion", "success").Inc()
+
+	logger.Info("upstream provider call completed",
+		slog.String("provider", p.Name()),
+		slog.String("model", req.Model),
+		slog.Int64("latency_total_ms", time.Since(start).Milliseconds()),
+	)
 
 	// Record token usage if available.
 	if resp.Usage.PromptTokens > 0 {
@@ -137,11 +158,18 @@ func (h *Handlers) handleNonStream(w http.ResponseWriter, r *http.Request, p pro
 
 func (h *Handlers) handleStream(w http.ResponseWriter, r *http.Request, p provider.Provider, req *models.ChatCompletionRequest) {
 	start := time.Now()
+	logger := ctxutil.Logger(r.Context())
+
+	logger.Info("upstream provider stream start",
+		slog.String("provider", p.Name()),
+		slog.String("model", req.Model),
+	)
 
 	chunks, errCh := p.ChatCompletionStream(r.Context(), req)
 
 	// Wait for the first event to decide whether to set SSE headers or return an HTTP error.
 	headersSent := false
+	var firstTokenLatency int64
 
 	for {
 		select {
@@ -151,17 +179,26 @@ func (h *Handlers) handleStream(w http.ResponseWriter, r *http.Request, p provid
 				if headersSent {
 					streaming.WriteSSEDone(w)
 				}
+				logger.Info("upstream provider stream completed",
+					slog.String("provider", p.Name()),
+					slog.String("model", req.Model),
+					slog.Int64("latency_first_token_ms", firstTokenLatency),
+					slog.Int64("latency_total_ms", time.Since(start).Milliseconds()),
+				)
 				return
 			}
 			if err != nil {
 				if !headersSent {
 					// Failed immediately before any chunks were sent, return HTTP error.
-					handleProviderError(w, p, err, "chat_completion_stream")
+					handleProviderError(w, r, p, err, "chat_completion_stream")
 					metrics.ProviderRequestDuration.WithLabelValues(p.Name(), "chat_completion_stream").Observe(time.Since(start).Seconds())
 					return
 				}
 				// Headers already sent, log the error and terminate the stream gracefully.
-				log.Printf("streaming error: %v", err)
+				logger.Error("streaming error",
+					slog.String("error", err.Error()),
+					slog.String("provider", p.Name()),
+				)
 				metrics.ProviderRequestsTotal.WithLabelValues(p.Name(), "chat_completion_stream", "error").Inc()
 				metrics.ProviderRequestDuration.WithLabelValues(p.Name(), "chat_completion_stream").Observe(time.Since(start).Seconds())
 				streaming.WriteSSEDone(w)
@@ -175,11 +212,14 @@ func (h *Handlers) handleStream(w http.ResponseWriter, r *http.Request, p provid
 				continue
 			}
 			if !headersSent {
+				firstTokenLatency = time.Since(start).Milliseconds()
 				streaming.SetSSEHeaders(w)
 				headersSent = true
 			}
 			if err := streaming.WriteSSEChunk(w, chunk); err != nil {
-				log.Printf("error writing SSE chunk: %v", err)
+				logger.Error("error writing SSE chunk",
+					slog.String("error", err.Error()),
+				)
 				metrics.ProviderRequestsTotal.WithLabelValues(p.Name(), "chat_completion_stream", "error").Inc()
 				return
 			}
