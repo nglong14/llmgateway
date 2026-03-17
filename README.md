@@ -9,7 +9,8 @@ Built in Go, this is a  project demonstrating production-ready backend patterns,
 
 ## 2. Architecture Diagram
 
-<img width="1089" height="318" alt="image" src="https://github.com/user-attachments/assets/ed5648b9-f21a-4a9e-a340-3098c81df90c" />
+<img width="1261" height="713" alt="image" src="https://github.com/user-attachments/assets/7158fff4-094f-4a74-9c32-a5e8ad3db3b4" />
+
 
 ```text
 Request Flows:
@@ -22,7 +23,7 @@ App stdout → Promtail → Loki → Grafana ← Prometheus ← App /metrics
 ```
 
 ## 3. Features
-* **Dual-layer Token Bucket Rate Limiting (Redis):** A centralized token bucket mechanism controlling traffic at two levels: **Client-side** (identifying users via API keys/IPs to prevent one tenant from monopolizing resources) and **Provider-side** (globally enforcing safe limits on outgoing LLM requests to prevent upstream 429s). Matters because LLM APIs are expensive and we must prevent abuse across distributed gateway instances.
+* **Dual-layer Token Bucket Rate Limiting (Redis):** A centralized token bucket mechanism controlling traffic at two levels: **Client-side** (identifying users via IPs to prevent one tenant from monopolizing resources) and **Provider-side** (globally enforcing safe limits on outgoing LLM requests to prevent upstream 429s). Matters because LLM APIs are expensive and we must prevent abuse across distributed gateway instances.
 * **In-memory circuit breaker per provider:** A state machine that trips and stops sending requests to a provider if it fails consecutively. Matters because if an upstream like OpenAI goes down, the gateway should fail fast (503) rather than hanging client connections and exhausting gateway infrastructure with timeouts.
 * **Unified request format (OpenAI, Anthropic, Gemini, Deepseek):** A single, consistent API schema accepted by the gateway, which translates requests on the fly. Matters because clients maintain one unified integration, dramatically simplifying client logic and standardizing inputs across distinct LLMs.
 * **Prometheus metrics:** Application-level instrumentation exposing real-time operational data. Matters for alerting on SLA breaches and understanding exact system and upstream behavior under distinct loads.
