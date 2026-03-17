@@ -9,19 +9,9 @@ Built in Go, this is a  project demonstrating production-ready backend patterns,
 
 ## 2. Architecture Diagram
 
-```text
-+--------+     +-----------------------------------------------------------------+     +---------------------+
-|        |     |                           LLM Gateway                           |     |                     |
-| Client | --> | +----------------------+     +-----------------------------+    | --> |       OpenAI        |
-|        |     | | Rate Limiter (Redis) | --> | Circuit Breaker (in-memory) |    |     |                     |
-+--------+     | +----------------------+     +-----------------------------+    |     +---------------------+
-               |                                             |                   |
-               |                                             v                   |     +---------------------+
-               |                                  +-------------------+          |     |                     |
-               |                                  |  Provider Router  | -------- | --> |      Anthropic      |
-               |                                  +-------------------+          |     |                     |
-               +-----------------------------------------------------------------+     +---------------------+
+<img width="1089" height="318" alt="image" src="https://github.com/user-attachments/assets/ed5648b9-f21a-4a9e-a340-3098c81df90c" />
 
+```text
 Request Flows:
 1. Happy path: Client → Rate Limiter (pass) → Circuit Breaker (closed) → Provider Router → Provider → 200 OK
 2. Rate limit exceeded: Client → Rate Limiter (reject) → 429 Too Many Requests returned
