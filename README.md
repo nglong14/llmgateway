@@ -94,13 +94,11 @@ Understanding the metrics:
 
 ## 7. Load Test Results
 
-| Metric | Result |
-| --- | --- |
-| Requests/sec | [INSERT RESULT] |
-| p99 latency | [INSERT RESULT] |
-| p95 latency | [INSERT RESULT] |
-| error rate | [INSERT RESULT] |
-| circuit breaker trips | [INSERT RESULT] |
+<img width="1587" height="860" alt="Screenshot 2026-03-16 140059" src="https://github.com/user-attachments/assets/d6b9728f-87c0-441a-b57b-9e569017bbcd" />
+
+<img width="1446" height="856" alt="Screenshot 2026-03-16 140119" src="https://github.com/user-attachments/assets/03e0d71c-381e-4bef-9430-a0daf03ff0d5" />
+
+
 
 ## 8. Design Decisions
 
