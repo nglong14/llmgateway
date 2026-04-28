@@ -58,7 +58,7 @@ func main() {
 	// Create provider registry and register providers.
 	registry := provider.NewRegistry()
 
-	// Connect to Redis (used by both per-IP and per-provider rate limiters).
+	// Connect to Redis
 	var redisClient *gatewayredis.Client
 	if cfg.Redis.Addr != "" {
 		rc, err := gatewayredis.New(cfg.Redis.Addr, cfg.Redis.Password, cfg.Redis.DB)
@@ -76,7 +76,6 @@ func main() {
 	providerRL := cfg.ProviderRateLimits
 
 	// wrapProvider applies the decorator chain: rate limiter (outer) → circuit breaker → provider.
-	// Rate limiter is outermost so rejected requests never touch the circuit breaker.
 	wrapProvider := func(p provider.Provider, name string) provider.Provider {
 		wrapped := middleware.NewCircuitBreakerProvider(p, cbCfg)
 		if rlCfg, ok := providerRL[name]; ok && rlCfg.RPM > 0 {
@@ -134,24 +133,23 @@ func main() {
 	var rl router.RateLimitMiddleware
 	if redisClient != nil {
 		rl = middleware.NewRedisRateLimiter(redisClient.RDB, rps, burst, memRL.ExtractIP)
-		slog.Info("Per-IP rate limiter initialized", 
-			slog.String("type", "redis"), 
-			slog.Float64("rps", rps), 
+		slog.Info("Per-IP rate limiter initialized",
+			slog.String("type", "redis"),
+			slog.Float64("rps", rps),
 			slog.Int("burst", burst),
 		)
 	} else {
 		rl = memRL
-		slog.Info("Per-IP rate limiter initialized", 
-			slog.String("type", "in-memory"), 
-			slog.Float64("rps", rps), 
+		slog.Info("Per-IP rate limiter initialized",
+			slog.String("type", "in-memory"),
+			slog.Float64("rps", rps),
 			slog.Int("burst", burst),
 		)
 	}
 
-
 	// Initialize Prometheus metrics.
 	metrics.Init()
-	
+
 	// Start internal administrative server for metrics
 	adminMux := http.NewServeMux()
 	adminMux.Handle("/metrics", metrics.Handler())

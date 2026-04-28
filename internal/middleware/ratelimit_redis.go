@@ -12,10 +12,6 @@ import (
 	"github.com/nglong14/llmgateway/internal/models"
 )
 
-// tokenBucketScript is a Lua script that implements a distributed token bucket.
-// It runs atomically on the Redis server, eliminating race conditions between
-// multiple gateway replicas.
-//
 // KEYS[1] = rate limit key (e.g., "rate:1.2.3.4")
 // ARGV[1] = capacity (max burst)
 // ARGV[2] = rate (tokens per second)
@@ -50,22 +46,15 @@ redis.call('EXPIRE', key, math.ceil(capacity / rate) * 2)
 return 0
 `)
 
-// RedisRateLimiter is a distributed per-IP token bucket rate limiter
-// backed by Redis. All gateway replicas share the same token buckets,
-// ensuring globally accurate rate limiting.
 type RedisRateLimiter struct {
 	rdb   *redis.Client
-	rate  float64 // tokens per second (matches config RPS)
-	burst int     // max bucket capacity (matches config Burst)
+	rate  float64
+	burst int
 
-	// extractIP is injected so we can reuse the trusted-proxy-aware
-	// extraction logic from the existing RateLimiter.
 	extractIP func(r *http.Request) string
 }
 
 // NewRedisRateLimiter creates a distributed rate limiter.
-// extractIP should be a function that extracts the real client IP
-// from the request (handling trusted proxies, X-Forwarded-For, etc.).
 func NewRedisRateLimiter(rdb *redis.Client, rps float64, burst int, extractIP func(r *http.Request) string) *RedisRateLimiter {
 	return &RedisRateLimiter{
 		rdb:       rdb,
@@ -117,5 +106,4 @@ func (rl *RedisRateLimiter) allow(ctx context.Context, ip string) (bool, error) 
 }
 
 // Stop is a no-op for the Redis rate limiter (no background goroutines).
-// It exists to satisfy the same lifecycle contract as the in-memory RateLimiter.
 func (rl *RedisRateLimiter) Stop() {}

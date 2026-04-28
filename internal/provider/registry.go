@@ -9,9 +9,9 @@ import (
 
 // Maps model names/prefixes to providers
 type Registry struct {
-	mu        sync.RWMutex        //Allows concurrent reads
-	providers map[string]Provider //name -> provider
-	prefixes  []prefixEntry       //ordered prefix rules
+	mu        sync.RWMutex
+	providers map[string]Provider
+	prefixes  []prefixEntry
 }
 
 type prefixEntry struct {
@@ -19,14 +19,12 @@ type prefixEntry struct {
 	provider Provider
 }
 
-// NewRegistry creates an empty registry
 func NewRegistry() *Registry {
 	return &Registry{
 		providers: make(map[string]Provider),
 	}
 }
 
-// Adds a provider and its model prefixes to the registry
 func (r *Registry) Register(p Provider, prefixes ...string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -42,7 +40,6 @@ func (r *Registry) Resolve(model, explicitProvider string) (Provider, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	// Explicit provider override.
 	if explicitProvider != "" {
 		if p, ok := r.providers[explicitProvider]; ok {
 			return p, nil
@@ -50,7 +47,6 @@ func (r *Registry) Resolve(model, explicitProvider string) (Provider, error) {
 		return nil, fmt.Errorf("unknown provider: %q", explicitProvider)
 	}
 
-	// Prefix matching.
 	for _, entry := range r.prefixes {
 		if strings.HasPrefix(model, entry.prefix) {
 			return entry.provider, nil
@@ -60,7 +56,6 @@ func (r *Registry) Resolve(model, explicitProvider string) (Provider, error) {
 	return nil, fmt.Errorf("no provider found for model: %q", model)
 }
 
-// ListAll returns all registered providers.
 func (r *Registry) ListAll() []Provider {
 	r.mu.RLock()
 	defer r.mu.RUnlock()

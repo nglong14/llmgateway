@@ -33,7 +33,7 @@ func (rw *responseWriter) WriteHeader(code int) {
 	rw.wroteHeader = true
 }
 
-// LoggingMiddleware logs the start and end of each request, and injects 
+// LoggingMiddleware logs the start and end of each request, and injects
 // a correlation ID and a request-scoped logger into the context.
 func LoggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

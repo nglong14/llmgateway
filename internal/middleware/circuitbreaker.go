@@ -14,34 +14,21 @@ import (
 	"github.com/nglong14/llmgateway/internal/provider"
 )
 
-// CircuitBreakerProvider wraps a provider.Provider and delegates every call
-// through a gobreaker circuit breaker. When the circuit is open, calls fail
-// immediately with a 503-style error instead of hitting the upstream provider.
 type CircuitBreakerProvider struct {
 	wrapped provider.Provider
 	cb      *gobreaker.TwoStepCircuitBreaker[any]
 }
 
-// NewCircuitBreakerProvider wraps the given provider with a circuit breaker
-// configured from cfg.
 func NewCircuitBreakerProvider(p provider.Provider, cfg config.CircuitBreakerConfig) *CircuitBreakerProvider {
 	settings := gobreaker.Settings{
 		Name: p.Name(),
 
-		// MaxRequests is the number of requests allowed in the half-open state
-		// to probe whether the upstream has recovered.
 		MaxRequests: cfg.MaxRequests,
 
-		// Interval is the cyclic period of the closed state.
-		// If Interval is 0, the failure count never resets while closed.
 		Interval: cfg.Interval,
 
-		// Timeout is how long the circuit stays open before transitioning
-		// to the half-open state to allow probe requests.
 		Timeout: cfg.Timeout,
 
-		// ReadyToTrip decides when to open the circuit.
-		// Here we open it after 5 consecutive failures.
 		ReadyToTrip: func(counts gobreaker.Counts) bool {
 			return counts.ConsecutiveFailures >= 5
 		},
@@ -78,8 +65,6 @@ func (c *CircuitBreakerProvider) ChatCompletion(ctx context.Context, req *models
 }
 
 // ChatCompletionStream runs the streaming request through the circuit breaker.
-// The circuit is checked upfront; the final outcome (success/failure) is
-// reported asynchronously when the stream completes via proxy channels.
 func (c *CircuitBreakerProvider) ChatCompletionStream(ctx context.Context, req *models.ChatCompletionRequest) (<-chan *models.StreamChunk, <-chan error) {
 	// Check if the circuit allows the request.
 	done, err := c.cb.Allow()
@@ -165,4 +150,3 @@ func wrapCBError(providerName string, err error) error {
 	}
 	return err
 }
-

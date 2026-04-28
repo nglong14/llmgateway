@@ -12,7 +12,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Top-level keys
 type Config struct {
 	Server             ServerConfig                       `yaml:"server"`
 	Providers          map[string]ProviderConfig          `yaml:"providers"`
@@ -22,18 +21,15 @@ type Config struct {
 	Redis              RedisConfig                        `yaml:"redis"`
 }
 
-// HTTP server settings.
 type ServerConfig struct {
 	Address string `yaml:"address"`
 }
 
-// Config for each provider
 type ProviderConfig struct {
 	APIKey  string `yaml:"api_key"`
 	BaseURL string `yaml:"base_url"`
 }
 
-// RateLimitConfig holds per-IP token-bucket settings.
 type RateLimitConfig struct {
 	RPS             float64       `yaml:"rps"`
 	Burst           int           `yaml:"burst"`
@@ -41,21 +37,17 @@ type RateLimitConfig struct {
 	TrustedProxies  []string      `yaml:"trusted_proxies"`
 }
 
-// ProviderRateLimitConfig holds per-provider aggregate rate limit settings.
 type ProviderRateLimitConfig struct {
-	RPM   float64 `yaml:"rpm"`   // Requests per minute (matches provider quota docs).
-	Burst int     `yaml:"burst"` // Max burst size.
+	RPM   float64 `yaml:"rpm"`
+	Burst int     `yaml:"burst"`
 }
 
-// CircuitBreakerConfig holds per-provider circuit breaker settings.
 type CircuitBreakerConfig struct {
 	MaxRequests uint32        `yaml:"max_requests"`
 	Interval    time.Duration `yaml:"interval"`
 	Timeout     time.Duration `yaml:"timeout"`
 }
 
-// RedisConfig holds Redis connection settings.
-// When Addr is empty, the gateway falls back to in-memory state.
 type RedisConfig struct {
 	Addr     string `yaml:"addr"`
 	Password string `yaml:"password"`
@@ -84,8 +76,6 @@ func Load(path string) (*Config, error) {
 	return &cfg, nil
 }
 
-// Validate checks that the loaded configuration has all required fields
-// and sane value ranges. Call immediately after Load().
 func (c *Config) Validate() error {
 	// Server address.
 	if c.Server.Address == "" {
@@ -128,8 +118,6 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-// expandEnvVars replaces every ${VAR} in s with the corresponding
-// environment variable value. Missing variables resolve to "".
 func expandEnvVars(s string) string {
 	return envVarPattern.ReplaceAllStringFunc(s, func(match string) string {
 		varName := strings.TrimSuffix(strings.TrimPrefix(match, "${"), "}")

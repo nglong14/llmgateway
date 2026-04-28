@@ -98,7 +98,7 @@ func handleProviderError(w http.ResponseWriter, r *http.Request, p provider.Prov
 		metrics.ProviderRequestsTotal.WithLabelValues(p.Name(), endpoint, statusLabel).Inc()
 		models.WriteServiceUnavailable(w, errStr)
 		return
-	} 
+	}
 
 	if strings.Contains(errStr, "rate limit exceeded") {
 		statusLabel = "rate_limit_exceeded"

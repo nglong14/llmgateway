@@ -14,9 +14,6 @@ type Client struct {
 	RDB *redis.Client
 }
 
-// New creates a Redis client and verifies the connection with a ping.
-// Returns an error if Redis is unreachable (caller decides whether to
-// fall back to in-memory or fail fast).
 func New(addr, password string, db int) (*Client, error) {
 	rdb := redis.NewClient(&redis.Options{
 		Addr:         addr,
