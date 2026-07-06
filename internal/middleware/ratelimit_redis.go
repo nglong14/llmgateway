@@ -10,6 +10,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"github.com/nglong14/llmgateway/internal/models"
+	"github.com/nglong14/llmgateway/internal/ctxutil"
 )
 
 // KEYS[1] = rate limit key (e.g., "rate:1.2.3.4")
@@ -54,7 +55,6 @@ type RedisRateLimiter struct {
 	extractIP func(r *http.Request) string
 }
 
-// NewRedisRateLimiter creates a distributed rate limiter.
 func NewRedisRateLimiter(rdb *redis.Client, rps float64, burst int, extractIP func(r *http.Request) string) *RedisRateLimiter {
 	return &RedisRateLimiter{
 		rdb:       rdb,
@@ -64,16 +64,15 @@ func NewRedisRateLimiter(rdb *redis.Client, rps float64, burst int, extractIP fu
 	}
 }
 
-// Handler returns Chi-compatible middleware that enforces the rate limit.
 func (rl *RedisRateLimiter) Handler(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ip := rl.extractIP(r)
+		key := ctxutil.APIKeyName(r.Context())
+        if key == "anonymous" {
+            key = rl.extractIP(r)
+        }
 
 		allowed, err := rl.allow(r.Context(), ip)
 		if err != nil {
-			// Redis is down — log and allow the request through.
-			// Availability > strictness: a brief Redis outage should not
-			// cause a full gateway blackout.
 			log.Printf("redis rate limiter error (allowing request): %v", err)
 			next.ServeHTTP(w, r)
 			return

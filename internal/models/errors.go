@@ -1,4 +1,3 @@
-// Error handling
 package models
 
 import (
@@ -6,19 +5,16 @@ import (
 	"net/http"
 )
 
-// ErrorResponse is the standard error envelope (matches OpenAI's format).
 type ErrorResponse struct {
 	Error ErrorDetail `json:"error"`
 }
 
-// ErrorDetail holds the error information.
 type ErrorDetail struct {
 	Message string `json:"message"`
 	Type    string `json:"type"`
 	Code    string `json:"code"`
 }
 
-// WriteError writes a JSON error response to w with the given HTTP status.
 func WriteError(w http.ResponseWriter, status int, message, errType, code string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -31,7 +27,6 @@ func WriteError(w http.ResponseWriter, status int, message, errType, code string
 	})
 }
 
-// Common error helpers.
 
 func WriteInvalidRequest(w http.ResponseWriter, message string) {
 	WriteError(w, http.StatusBadRequest, message, "invalid_request_error", "invalid_request")
@@ -51,4 +46,8 @@ func WriteRateLimited(w http.ResponseWriter, message string) {
 
 func WriteServiceUnavailable(w http.ResponseWriter, message string) {
 	WriteError(w, http.StatusServiceUnavailable, message, "service_error", "service_unavailable")
+}
+
+func WriteUnauthorized(w http.ResponseWriter, message string) {
+	WriteError(w, http.StatusUnauthorized, message, "invalid_request_error", "unauthorized")
 }

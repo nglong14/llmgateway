@@ -166,7 +166,7 @@ func main() {
 	}()
 
 	// Create router with all routes and middleware.
-	r := router.New(registry, rl)
+	r := router.New(registry, rl, cfg.Auth)
 
 	// Start HTTP server.
 	srv := &http.Server{

@@ -10,6 +10,7 @@ type contextKey string
 const (
 	correlationIDKey contextKey = "correlation_id"
 	loggerKey        contextKey = "logger"
+	apiKeyNameKey    contextKey = "api_key_name"
 )
 
 // WithCorrelationID returns a new context with the given correlation ID.
@@ -36,4 +37,12 @@ func Logger(ctx context.Context) *slog.Logger {
 		return logger
 	}
 	return slog.Default()
+}
+
+// APIKeyName returns the authenticated key name, or "anonymous" if none.
+func APIKeyName(ctx context.Context) string {
+    if v, ok := ctx.Value(apiKeyNameKey).(string); ok {
+        return v
+    }
+    return "anonymous"
 }

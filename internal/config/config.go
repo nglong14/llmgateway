@@ -1,4 +1,3 @@
-// Package config handles loading and parsing the configuration file.
 package config
 
 import (
@@ -19,6 +18,18 @@ type Config struct {
 	ProviderRateLimits map[string]ProviderRateLimitConfig `yaml:"provider_rate_limits"`
 	CircuitBreaker     CircuitBreakerConfig               `yaml:"circuit_breaker"`
 	Redis              RedisConfig                        `yaml:"redis"`
+	Auth               AuthConfig                         `yaml:"auth"`
+}
+
+type AuthConfig struct {
+	Enabled   bool     `yaml:"enabled"`
+	Keys      []string `yaml:"keys"`
+	SkipPaths []string `yaml:"skip_paths"`
+}
+
+type APIKeyConfig struct {
+	KeyHash string `yaml:"key_hash"`
+	Name    string `yaml:"name"`
 }
 
 type ServerConfig struct {
@@ -54,20 +65,16 @@ type RedisConfig struct {
 	DB       int    `yaml:"db"`
 }
 
-// Matches ${ENV_VAR} placeholders.
 var envVarPattern = regexp.MustCompile(`\$\{([^}]+)\}`)
 
-// Load reads a YAML config file from path, expands any ${ENV_VAR}
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("config: read file %s: %w", path, err)
 	}
 
-	// Replace env variables with their values (expand placeholders).
 	expanded := expandEnvVars(string(data))
 
-	// Pass the expanded YAML to yaml (Unmarshal).
 	var cfg Config
 	if err := yaml.Unmarshal([]byte(expanded), &cfg); err != nil {
 		return nil, fmt.Errorf("config: parse yaml: %w", err)
@@ -77,17 +84,27 @@ func Load(path string) (*Config, error) {
 }
 
 func (c *Config) Validate() error {
-	// Server address.
+	if c.Auth.Enabled {
+	    if len(c.Auth.Keys) == 0 {
+	        return fmt.Errorf("config: auth.enabled is true but no keys are configured")
+	    }
+	    for i, k := range c.Auth.Keys {
+	        if k.KeyHash == "" {
+	            return fmt.Errorf("config: auth.keys[%d] has empty key_hash (check env vars)", i)
+	        }
+	        if !isValidSHA256Hex(k.KeyHash) {
+	            return fmt.Errorf("config: auth.keys[%d] key_hash is not a valid SHA-256 hex digest", i)
+	        }
+	    }
+}
 	if c.Server.Address == "" {
 		return fmt.Errorf("config: server.address is required")
 	}
 
-	// At least one provider must be configured.
 	if len(c.Providers) == 0 {
 		return fmt.Errorf("config: at least one provider must be configured")
 	}
 
-	// Each provider needs non-empty credentials.
 	for name, p := range c.Providers {
 		if p.APIKey == "" {
 			return fmt.Errorf("config: provider %q has empty api_key (check env vars)", name)
@@ -97,7 +114,6 @@ func (c *Config) Validate() error {
 		}
 	}
 
-	// Rate limit values must be non-negative.
 	if c.RateLimit.RPS < 0 {
 		return fmt.Errorf("config: rate_limit.rps must be >= 0, got %.2f", c.RateLimit.RPS)
 	}
@@ -105,7 +121,6 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("config: rate_limit.burst must be >= 0, got %d", c.RateLimit.Burst)
 	}
 
-	// Provider rate limits must reference known providers.
 	for name, rl := range c.ProviderRateLimits {
 		if _, ok := c.Providers[name]; !ok {
 			return fmt.Errorf("config: provider_rate_limits references unknown provider %q", name)

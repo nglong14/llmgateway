@@ -48,3 +48,13 @@ redis:
   addr: "${REDIS_ADDR}"
   password: "${REDIS_PASSWORD}"
   db: 0
+
+auth:
+  enabled: true
+  keys:
+    - key_hash: "${GATEWAY_API_KEY_HASH}"
+      name: "default"
+    - key_hash: "${GATEWAY_ADMIN_KEY_HASH}"
+      name: "admin"
+  skip_paths:
+    - "/health"

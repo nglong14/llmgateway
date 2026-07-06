@@ -50,23 +50,25 @@ func NewRateLimiter(rps float64, burst int, cleanupInterval time.Duration, trust
 	return rl
 }
 
-// Handler returns Chi-compatible middleware that enforces the rate limit.
 func (rl *RateLimiter) Handler(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ip := rl.ExtractIP(r)
-		limiter := rl.getLimiter(ip)
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        key := ctxutil.APIKeyName(r.Context())
+        if key == "anonymous" {
+            key = rl.ExtractIP(r)
+        }
 
-		if !limiter.Allow() {
-			ctxutil.Logger(r.Context()).Warn("rate limit exceeded",
-				slog.String("ip", ip),
-			)
-			models.WriteRateLimited(w, "rate limit exceeded, try again later")
-			return
-		}
-
-		next.ServeHTTP(w, r)
-	})
+        limiter := rl.getLimiter(key)
+        if !limiter.Allow() {
+            ctxutil.Logger(r.Context()).Warn("rate limit exceeded",
+                slog.String("rate_limit_key", key),
+            )
+            models.WriteRateLimited(w, "rate limit exceeded, try again later")
+            return
+        }
+        next.ServeHTTP(w, r)
+    })
 }
+
 
 // Stop signals the cleanup goroutine to exit.
 func (rl *RateLimiter) Stop() {
