@@ -39,10 +39,15 @@ func Logger(ctx context.Context) *slog.Logger {
 	return slog.Default()
 }
 
+// WithAPIKeyName returns a new context with the given API key name.
+func WithAPIKeyName(ctx context.Context, name string) context.Context {
+	return context.WithValue(ctx, apiKeyNameKey, name)
+}
+
 // APIKeyName returns the authenticated key name, or "anonymous" if none.
 func APIKeyName(ctx context.Context) string {
-    if v, ok := ctx.Value(apiKeyNameKey).(string); ok {
-        return v
-    }
-    return "anonymous"
+	if v, ok := ctx.Value(apiKeyNameKey).(string); ok {
+		return v
+	}
+	return "anonymous"
 }

@@ -5,16 +5,16 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
+	"github.com/nglong14/llmgateway/internal/config"
 	"github.com/nglong14/llmgateway/internal/middleware"
 	"github.com/nglong14/llmgateway/internal/provider"
-	"github.com/nglong14/llmgateway/internal/config"
 )
 
 type RateLimitMiddleware interface {
 	Handler(next http.Handler) http.Handler
 }
 
-func New(registry *provider.Registry, rl RateLimitMiddleware) chi.Router {
+func New(registry *provider.Registry, rl RateLimitMiddleware, authCfg config.AuthConfig) chi.Router {
 	r := chi.NewRouter()
 
 	r.Use(middleware.LoggingMiddleware)

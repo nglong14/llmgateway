@@ -22,9 +22,9 @@ type Config struct {
 }
 
 type AuthConfig struct {
-	Enabled   bool     `yaml:"enabled"`
-	Keys      []string `yaml:"keys"`
-	SkipPaths []string `yaml:"skip_paths"`
+	Enabled   bool           `yaml:"enabled"`
+	Keys      []APIKeyConfig `yaml:"keys"`
+	SkipPaths []string       `yaml:"skip_paths"`
 }
 
 type APIKeyConfig struct {
@@ -85,18 +85,18 @@ func Load(path string) (*Config, error) {
 
 func (c *Config) Validate() error {
 	if c.Auth.Enabled {
-	    if len(c.Auth.Keys) == 0 {
-	        return fmt.Errorf("config: auth.enabled is true but no keys are configured")
-	    }
-	    for i, k := range c.Auth.Keys {
-	        if k.KeyHash == "" {
-	            return fmt.Errorf("config: auth.keys[%d] has empty key_hash (check env vars)", i)
-	        }
-	        if !isValidSHA256Hex(k.KeyHash) {
-	            return fmt.Errorf("config: auth.keys[%d] key_hash is not a valid SHA-256 hex digest", i)
-	        }
-	    }
-}
+		if len(c.Auth.Keys) == 0 {
+			return fmt.Errorf("config: auth.enabled is true but no keys are configured")
+		}
+		for i, k := range c.Auth.Keys {
+			if k.KeyHash == "" {
+				return fmt.Errorf("config: auth.keys[%d] has empty key_hash (check env vars)", i)
+			}
+			if !isValidSHA256Hex(k.KeyHash) {
+				return fmt.Errorf("config: auth.keys[%d] key_hash is not a valid SHA-256 hex digest", i)
+			}
+		}
+	}
 	if c.Server.Address == "" {
 		return fmt.Errorf("config: server.address is required")
 	}
@@ -131,6 +131,18 @@ func (c *Config) Validate() error {
 	}
 
 	return nil
+}
+
+func isValidSHA256Hex(s string) bool {
+	if len(s) != 64 {
+		return false
+	}
+	for _, c := range s {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return false
+		}
+	}
+	return true
 }
 
 func expandEnvVars(s string) string {

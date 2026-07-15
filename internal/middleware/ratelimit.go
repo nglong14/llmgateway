@@ -51,36 +51,35 @@ func NewRateLimiter(rps float64, burst int, cleanupInterval time.Duration, trust
 }
 
 func (rl *RateLimiter) Handler(next http.Handler) http.Handler {
-    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-        key := ctxutil.APIKeyName(r.Context())
-        if key == "anonymous" {
-            key = rl.ExtractIP(r)
-        }
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		key := ctxutil.APIKeyName(r.Context())
+		if key == "anonymous" {
+			key = rl.ExtractIP(r)
+		}
 
-        limiter := rl.getLimiter(key)
-        if !limiter.Allow() {
-            ctxutil.Logger(r.Context()).Warn("rate limit exceeded",
-                slog.String("rate_limit_key", key),
-            )
-            models.WriteRateLimited(w, "rate limit exceeded, try again later")
-            return
-        }
-        next.ServeHTTP(w, r)
-    })
+		limiter := rl.getLimiter(key)
+		if !limiter.Allow() {
+			ctxutil.Logger(r.Context()).Warn("rate limit exceeded",
+				slog.String("rate_limit_key", key),
+			)
+			models.WriteRateLimited(w, "rate limit exceeded, try again later")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
-
 
 // Stop signals the cleanup goroutine to exit.
 func (rl *RateLimiter) Stop() {
 	close(rl.done)
 }
 
-// getLimiter returns the rate.Limiter for the given IP, creating one if needed.
-func (rl *RateLimiter) getLimiter(ip string) *rate.Limiter {
+// getLimiter returns the rate.Limiter for the given key, creating one if needed.
+func (rl *RateLimiter) getLimiter(key string) *rate.Limiter {
 	now := time.Now().UnixNano()
 
 	// Fast path: entry already exists.
-	if v, ok := rl.visitors.Load(ip); ok {
+	if v, ok := rl.visitors.Load(key); ok {
 		entry := v.(*visitorEntry)
 		entry.lastSeen.Store(now)
 		return entry.limiter
@@ -90,7 +89,7 @@ func (rl *RateLimiter) getLimiter(ip string) *rate.Limiter {
 	newEntry := &visitorEntry{limiter: rate.NewLimiter(rl.rps, rl.burst)}
 	newEntry.lastSeen.Store(now)
 
-	v, _ := rl.visitors.LoadOrStore(ip, newEntry)
+	v, _ := rl.visitors.LoadOrStore(key, newEntry)
 	entry := v.(*visitorEntry)
 	entry.lastSeen.Store(now)
 	return entry.limiter

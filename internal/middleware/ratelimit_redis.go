@@ -9,11 +9,11 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
-	"github.com/nglong14/llmgateway/internal/models"
 	"github.com/nglong14/llmgateway/internal/ctxutil"
+	"github.com/nglong14/llmgateway/internal/models"
 )
 
-// KEYS[1] = rate limit key (e.g., "rate:1.2.3.4")
+// KEYS[1] = rate limit key (e.g., "rate:my-api-key" or "rate:1.2.3.4")
 // ARGV[1] = capacity (max burst)
 // ARGV[2] = rate (tokens per second)
 // ARGV[3] = now (current time in seconds as a float)
@@ -67,11 +67,12 @@ func NewRedisRateLimiter(rdb *redis.Client, rps float64, burst int, extractIP fu
 func (rl *RedisRateLimiter) Handler(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		key := ctxutil.APIKeyName(r.Context())
-        if key == "anonymous" {
-            key = rl.extractIP(r)
-        }
 
-		allowed, err := rl.allow(r.Context(), ip)
+		if key == "anonymous" {
+			key = rl.extractIP(r)
+		}
+
+		allowed, err := rl.allow(r.Context(), key)
 		if err != nil {
 			log.Printf("redis rate limiter error (allowing request): %v", err)
 			next.ServeHTTP(w, r)
@@ -88,11 +89,11 @@ func (rl *RedisRateLimiter) Handler(next http.Handler) http.Handler {
 }
 
 // allow executes the token bucket Lua script against Redis.
-func (rl *RedisRateLimiter) allow(ctx context.Context, ip string) (bool, error) {
+func (rl *RedisRateLimiter) allow(ctx context.Context, key string) (bool, error) {
 	now := float64(time.Now().UnixMicro()) / 1e6 // seconds with microsecond precision
 
 	result, err := tokenBucketScript.Run(ctx, rl.rdb,
-		[]string{"rate:" + ip},
+		[]string{"rate:" + key},
 		rl.burst, // ARGV[1] = capacity
 		rl.rate,  // ARGV[2] = tokens/sec
 		now,      // ARGV[3] = current time
