@@ -34,3 +34,5 @@ go.work.sum
 logs/
 bin/
 plan/
+
+postman/llmgateway.postman_environment.json
