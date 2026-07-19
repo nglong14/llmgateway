@@ -19,6 +19,28 @@ type Config struct {
 	CircuitBreaker     CircuitBreakerConfig               `yaml:"circuit_breaker"`
 	Redis              RedisConfig                        `yaml:"redis"`
 	Auth               AuthConfig                         `yaml:"auth"`
+	Database           DatabaseConfig                     `yaml:"database"`
+	JWT                JWTConfig                          `yaml:"jwt"`
+}
+
+type DatabaseConfig struct {
+	Host     string `yaml:"host"`
+	Port     string `yaml:"port"`
+	User     string `yaml:"user"`
+	Password string `yaml:"password"`
+	DBName   string `yaml:"dbname"`
+	SSLMode  string `yaml:"sslmode"`
+}
+
+func (c DatabaseConfig) Configured() bool {
+	return c.Host != "" && c.User != "" && c.DBName != ""
+}
+
+type JWTConfig struct {
+	AccessTokenSecret  string        `yaml:"access_token_secret"`
+	RefreshTokenSecret string        `yaml:"refresh_token_secret"`
+	AccessTokenTTL     time.Duration `yaml:"access_token_ttl"`
+	RefreshTokenTTL    time.Duration `yaml:"refresh_token_ttl"`
 }
 
 type AuthConfig struct {

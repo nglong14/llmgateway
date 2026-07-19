@@ -58,3 +58,17 @@ auth:
       name: "admin"
   skip_paths:
     - "/health"
+
+database:
+  host: "${DB_HOST}"
+  port: "${DB_PORT}"
+  user: "${DB_USER}"
+  password: "${DB_PASSWORD}"
+  dbname: "${DB_NAME}"
+  sslmode: "${DB_SSLMODE}"
+
+jwt:
+  access_token_secret: "${JWT_ACCESS_SECRET}"
+  refresh_token_secret: "${JWT_REFRESH_SECRET}"
+  access_token_ttl: 15m
+  refresh_token_ttl: 720h
