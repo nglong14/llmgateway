@@ -3,6 +3,8 @@ package ctxutil
 import (
 	"context"
 	"log/slog"
+
+	"github.com/google/uuid"
 )
 
 type contextKey string
@@ -11,6 +13,7 @@ const (
 	correlationIDKey contextKey = "correlation_id"
 	loggerKey        contextKey = "logger"
 	apiKeyNameKey    contextKey = "api_key_name"
+	userIDKey        contextKey = "user_id"
 )
 
 // WithCorrelationID returns a new context with the given correlation ID.
@@ -50,4 +53,18 @@ func APIKeyName(ctx context.Context) string {
 		return v
 	}
 	return "anonymous"
+}
+
+// WithUserID returns a new context with the given authenticated user ID.
+func WithUserID(ctx context.Context, userID uuid.UUID) context.Context {
+	return context.WithValue(ctx, userIDKey, userID)
+}
+
+// UserID returns the authenticated user ID from the context, if present.
+func UserID(ctx context.Context) (uuid.UUID, bool) {
+	v, ok := ctx.Value(userIDKey).(uuid.UUID)
+	if !ok || v == uuid.Nil {
+		return uuid.Nil, false
+	}
+	return v, true
 }

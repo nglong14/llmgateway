@@ -22,7 +22,10 @@ func New(registry *provider.Registry, rl RateLimitMiddleware, authCfg config.Aut
 	r.Use(middleware.PrometheusMiddleware)
 
 	if authCfg.Enabled {
-		r.Use(middleware.AuthMiddleware(authCfg))
+		validators := []middleware.KeyValidator{
+			middleware.NewStaticKeyValidator(authCfg.Keys),
+		}
+		r.Use(middleware.AuthMiddleware(authCfg, validators))
 	}
 
 	r.Group(func(api chi.Router) {
