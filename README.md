@@ -9,7 +9,9 @@ Built in Go, this is a  project demonstrating production-ready backend patterns,
 
 ## 2. Architecture Diagram
 
-<img width="1261" height="713" alt="image" src="https://github.com/user-attachments/assets/7158fff4-094f-4a74-9c32-a5e8ad3db3b4" />
+<!-- <img width="1261" height="713" alt="image" src="https://github.com/user-attachments/assets/7158fff4-094f-4a74-9c32-a5e8ad3db3b4" /> -->
+<img width="1520" height="2400" alt="image" src="https://github.com/user-attachments/assets/b00f16f3-5e00-4717-8976-91463b0d5a89" />
+
 
 
 ```text
