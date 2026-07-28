@@ -6,14 +6,17 @@
 make build          # go build -o bin/gateway.exe ./cmd/gateway
 make run            # go run ./cmd/gateway --config configs/gateway.yaml
 make test           # go test ./... -v -count=1 -race
-make docker-up      # docker compose up --build -d  (gateway + redis + prometheus + grafana + loki + promtail)
+make docker-up      # docker compose up --build -d (gateway + postgres + redis + observability)
 make docker-down    # docker compose down
+make migrate-up     # apply pending PostgreSQL migrations
+make migrate-down   # roll back the latest migration
+make migrate-status # show applied and pending migrations
 make k6-smoke       # k6 run loadtests/smoke.js
 ```
 
 ## Architecture
 
-Single-module Go project (`github.com/nglong14/llmgateway`, go 1.25.0). No monorepo, no codegen, no database migrations.
+Single-module Go project (`github.com/nglong14/llmgateway`, go 1.25.0). No monorepo or codegen. PostgreSQL migrations are embedded in `internal/db/migrations/` and run explicitly through `cmd/migrate`.
 
 **Entrypoint:** `cmd/gateway/main.go` — wires providers, middleware, and servers with graceful shutdown.
 
@@ -21,6 +24,8 @@ Single-module Go project (`github.com/nglong14/llmgateway`, go 1.25.0). No monor
 - `GET /health`
 - `GET /v1/models`
 - `POST /v1/chat/completions` (streaming + non-streaming)
+- `POST /auth/signup`, `/auth/login`, `/auth/token`, `/auth/refresh`
+- `GET/POST /auth/keys`, `DELETE /auth/keys/{id}` (JWT access token)
 
 **Admin** (`:9091`): `GET /metrics` (Prometheus)
 
@@ -33,7 +38,9 @@ LoggingMiddleware → Recoverer → PrometheusMiddleware → (if auth enabled) A
 
 `configs/gateway.yaml` uses `${ENV_VAR}` expansion via regex. API keys and Redis credentials are never hardcoded. Load order: `.env` (godotenv) → `--config` YAML → env var substitution → validation.
 
-Auth keys are SHA-256 hex digests (64-char hex), not plaintext. The incoming `Authorization: Bearer <token>` is hashed and looked up via O(1) map.
+Static auth keys are SHA-256 hex digests (64-char hex), not plaintext. API-key authentication checks static config first, then non-revoked PostgreSQL keys when the database is available. PostgreSQL is optional; auth management endpoints return 503 without it.
+
+Migrations are never applied on gateway startup. Run `make migrate-up` after starting PostgreSQL and before using database-backed auth.
 
 ## Provider system
 

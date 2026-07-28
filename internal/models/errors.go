@@ -51,3 +51,15 @@ func WriteServiceUnavailable(w http.ResponseWriter, message string) {
 func WriteUnauthorized(w http.ResponseWriter, message string) {
 	WriteError(w, http.StatusUnauthorized, message, "invalid_request_error", "unauthorized")
 }
+
+func WriteConflict(w http.ResponseWriter, message string) {
+	WriteError(w, http.StatusConflict, message, "invalid_request_error", "conflict")
+}
+
+func WriteKeyNotFound(w http.ResponseWriter, message string) {
+	WriteError(w, http.StatusNotFound, message, "invalid_request_error", "key_not_found")
+}
+
+func WriteInternalError(w http.ResponseWriter, message string) {
+	WriteError(w, http.StatusInternalServerError, message, "server_error", "internal_error")
+}

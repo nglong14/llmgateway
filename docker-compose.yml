@@ -6,8 +6,15 @@ services:
       - "9091:9091"
     env_file:
       - .env
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      REDIS_ADDR: redis:6379
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
     volumes:
       - ./logs:/var/log/gateway
     networks:
@@ -17,6 +24,29 @@ services:
     image: redis:7-alpine
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - gateway-net
+
+  postgres:
+    image: postgres:17-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ${DB_USER:-gateway}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-gateway}
+      POSTGRES_DB: ${DB_NAME:-gateway}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-gateway} -d ${DB_NAME:-gateway}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
     networks:
       - gateway-net
 
@@ -70,3 +100,6 @@ services:
 networks:
   gateway-net:
     driver: bridge
+
+volumes:
+  postgres-data:

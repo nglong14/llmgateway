@@ -13,7 +13,9 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
+	"github.com/nglong14/llmgateway/internal/auth"
 	"github.com/nglong14/llmgateway/internal/config"
+	"github.com/nglong14/llmgateway/internal/db"
 	"github.com/nglong14/llmgateway/internal/metrics"
 	"github.com/nglong14/llmgateway/internal/middleware"
 	"github.com/nglong14/llmgateway/internal/provider"
@@ -22,6 +24,7 @@ import (
 	"github.com/nglong14/llmgateway/internal/provider/gemini"
 	"github.com/nglong14/llmgateway/internal/provider/openai"
 	gatewayredis "github.com/nglong14/llmgateway/internal/redis"
+	"github.com/nglong14/llmgateway/internal/repository"
 	"github.com/nglong14/llmgateway/internal/router"
 )
 
@@ -53,6 +56,40 @@ func main() {
 	if err := cfg.Validate(); err != nil {
 		slog.Error("invalid config", slog.String("error", err.Error()))
 		os.Exit(1)
+	}
+
+	keyValidators := []middleware.KeyValidator{
+		middleware.NewStaticKeyValidator(cfg.Auth.Keys),
+	}
+	var authService *auth.Service
+	var tokenManager *auth.TokenManager
+
+	// PostgreSQL is optional. Static keys continue to work when it is absent.
+	if cfg.Database.Configured() {
+		connectCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		database, dbErr := db.Connect(connectCtx, cfg.Database)
+		cancel()
+		if dbErr != nil {
+			slog.Warn("PostgreSQL unavailable — database auth disabled", slog.String("error", dbErr.Error()))
+		} else {
+			defer database.Close()
+
+			users := repository.NewUserRepository(database.Pool)
+			keys := repository.NewAPIKeyRepository(database.Pool)
+			refreshTokens := repository.NewRefreshTokenRepository(database.Pool)
+			keyValidators = append(keyValidators, middleware.NewDatabaseKeyValidator(keys))
+
+			tokenManager, err = auth.NewTokenManager(cfg.JWT)
+			if err != nil {
+				slog.Warn("JWT configuration invalid — auth management endpoints disabled", slog.String("error", err.Error()))
+				tokenManager = nil
+			} else {
+				authService = auth.NewService(users, keys, refreshTokens, tokenManager)
+			}
+			slog.Info("Connected to PostgreSQL")
+		}
+	} else {
+		slog.Warn("PostgreSQL is not configured — database auth disabled")
 	}
 
 	// Create provider registry and register providers.
@@ -166,7 +203,7 @@ func main() {
 	}()
 
 	// Create router with all routes and middleware.
-	r := router.New(registry, rl, cfg.Auth)
+	r := router.New(registry, rl, cfg.Auth, authService, tokenManager, keyValidators)
 
 	// Start HTTP server.
 	srv := &http.Server{

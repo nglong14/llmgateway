@@ -58,6 +58,11 @@ auth:
       name: "admin"
   skip_paths:
     - "/health"
+    - "/auth/signup"
+    - "/auth/login"
+    - "/auth/token"
+    - "/auth/refresh"
+    - "/auth/keys"
 
 database:
   host: "${DB_HOST}"

@@ -26,6 +26,7 @@ App stdout → Promtail → Loki → Grafana ← Prometheus ← App /metrics
 * **Dual-layer Token Bucket Rate Limiting (Redis):** A centralized token bucket mechanism controlling traffic at two levels: **Client-side** (identifying users via IPs to prevent one tenant from monopolizing resources) and **Provider-side** (globally enforcing safe limits on outgoing LLM requests to prevent upstream 429s). Matters because LLM APIs are expensive and we must prevent abuse across distributed gateway instances.
 * **In-memory circuit breaker per provider:** A state machine that trips and stops sending requests to a provider if it fails consecutively. Matters because if an upstream like OpenAI goes down, the gateway should fail fast (503) rather than hanging client connections and exhausting gateway infrastructure with timeouts.
 * **Unified request format (OpenAI, Anthropic, Gemini, Deepseek):** A single, consistent API schema accepted by the gateway, which translates requests on the fly. Matters because clients maintain one unified integration, dramatically simplifying client logic and standardizing inputs across distinct LLMs.
+* **PostgreSQL-backed authentication:** Sign-up, login, JWT access/refresh sessions, rotating refresh tokens, and user-managed API keys. Existing static config keys remain supported as a fallback.
 * **Prometheus metrics:** Application-level instrumentation exposing real-time operational data. Matters for alerting on SLA breaches and understanding exact system and upstream behavior under distinct loads.
 * **Structured JSON logging with correlation IDs:** Deterministic JSON logs containing a unique request ID. Matters because it enables robust tracing of a single request's lifecycle across all subsystems, critical for debugging concurrent API streams.
 * **Loki + Promtail log aggregation:** Promtail ships container stdout logs natively to Loki. Matters for centralizing infrastructure logs without the massive memory overhead of an ELK stack.
@@ -56,13 +57,15 @@ App stdout → Promtail → Loki → Grafana ← Prometheus ← App /metrics
    cp .env.example .env
    # Set OPENAI_API_KEY and ANTHROPIC_API_KEY inside .env
    ```
-3. Boot the environment
+3. Boot the environment and apply database migrations
    ```bash
-   docker-compose up -d
+   make docker-up
+   make migrate-up
    ```
 4. Verify the gateway works:
    ```bash
-   curl -X POST localhost:8080/v1/chat \
+   curl -X POST localhost:8080/v1/chat/completions \
+     -H "Authorization: Bearer <gateway-api-key>" \
      -H "Content-Type: application/json" \
      -d '{
        "model": "gpt-3.5-turbo",
@@ -72,8 +75,22 @@ App stdout → Promtail → Loki → Grafana ← Prometheus ← App /metrics
 
 **Services:**
 * Gateway: `:8080`
+* PostgreSQL: `localhost:5432`
 * Grafana: `http://localhost:3000` (admin/admin)
 * Prometheus: `http://localhost:9090`
+
+### Database migrations
+
+Migrations are explicit and are never run automatically when the gateway starts:
+
+```bash
+make migrate-status  # show applied and pending versions
+make migrate-up      # apply all pending migrations
+make migrate-down    # roll back the latest migration
+```
+
+PostgreSQL is optional at runtime. If it is unavailable, the gateway continues with
+static config API keys, while `/auth/*` management endpoints return `503`.
 
 ## 6. Observability
 Understanding the metrics:
