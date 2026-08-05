@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760.00" height="1200.00" viewBox="0 0 760.00 1200.00">
+<defs>
+    <marker id="arr-495057" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#495057"/></marker>
+  </defs>
+<rect width="760.00" height="1200.00" fill="#ffffff"/>
+<rect x="189.00" y="70.00" width="166.00" height="55.00" rx="8" fill="#f8f9fa" stroke="#495057" stroke-width="2" opacity="1.00"/>
+<rect x="166.50" y="205.50" width="211.00" height="68.00" rx="8" fill="#f8f9fa" stroke="#495057" stroke-width="2" opacity="1.00"/>
+<rect x="60.25" y="354.00" width="148.00" height="55.00" rx="8" fill="#f8f9fa" stroke="#495057" stroke-width="2" opacity="1.00"/>
+<rect x="175.50" y="488.00" width="193.00" height="55.00" rx="8" fill="#f8f9fa" stroke="#495057" stroke-width="2" opacity="1.00"/>
+<rect x="157.50" y="624.00" width="229.00" height="55.00" rx="8" fill="#f8f9fa" stroke="#495057" stroke-width="2" opacity="1.00"/>
+<rect x="184.50" y="758.00" width="175.00" height="55.00" rx="8" fill="#f8f9fa" stroke="#495057" stroke-width="2" opacity="1.00"/>
+<rect x="457.50" y="909.00" width="220.00" height="55.00" rx="8" fill="#f8f9fa" stroke="#495057" stroke-width="2" opacity="1.00"/>
+<rect x="40.00" y="1064.82" width="193.00" height="68.00" rx="8" fill="#f8f9fa" stroke="#495057" stroke-width="2" opacity="1.00"/>
+<rect x="487.00" y="1064.82" width="202.00" height="68.00" rx="8" fill="#f8f9fa" stroke="#495057" stroke-width="2" opacity="1.00"/>
+<rect x="40.25" y="893.50" width="357.25" height="86.00" rx="8" fill="#fff9db" stroke="#e67700" stroke-width="2" opacity="1.00"/>
+<rect x="187.78" y="899.50" width="62.20" height="21.00" rx="8" fill="#e9ecef" stroke="#e67700" stroke-width="1" opacity="1.00"/>
+<path d="M 272.00,125.00 L 272.00,205.50" fill="none" stroke="#495057" stroke-width="2" opacity="1.00" marker-end="url(#arr-495057)"/>
+<path d="M 239.50,273.50 L 200.25,354.00" fill="none" stroke="#495057" stroke-width="2" opacity="1.00" marker-end="url(#arr-495057)"/>
+<path d="M 156.25,409.00 L 183.50,488.00" fill="none" stroke="#495057" stroke-width="2" opacity="1.00" marker-end="url(#arr-495057)"/>
+<path d="M 272.00,543.00 L 272.00,624.00" fill="none" stroke="#495057" stroke-width="2" opacity="1.00" marker-end="url(#arr-495057)"/>
+<path d="M 272.00,679.00 L 272.00,758.00" fill="none" stroke="#495057" stroke-width="2" opacity="1.00" marker-end="url(#arr-495057)"/>
+<path d="M 298.50,813.00 L 465.50,909.00" fill="none" stroke="#495057" stroke-width="2" opacity="1.00" marker-end="url(#arr-495057)"/>
+<path d="M 567.50,964.00 L 567.50,1010.00 L 136.50,1010.00 L 136.50,1064.82" fill="none" stroke="#495057" stroke-width="2" opacity="1.00" marker-end="url(#arr-495057)"/>
+<path d="M 567.50,964.00 L 567.50,1010.00 L 588.00,1010.00 L 588.00,1064.82" fill="none" stroke="#495057" stroke-width="2" opacity="1.00" marker-end="url(#arr-495057)"/>
+<path d="M 136.50,1132.82 L 136.50,1160.00 L 720.00,1160.00 L 720.00,40.00 L 272.00,40.00 L 272.00,70.00" fill="none" stroke="#495057" stroke-width="2" opacity="1.00" marker-end="url(#arr-495057)"/>
+<path d="M 588.00,1132.82 L 588.00,1160.00 L 720.00,1160.00 L 720.00,40.00 L 272.00,40.00 L 272.00,70.00" fill="none" stroke="#495057" stroke-width="2" opacity="1.00" marker-end="url(#arr-495057)"/>
+<path d="M 272.00,273.50 L 272.00,465.00 L 420.00,465.00 L 420.00,865.00 L 218.88,865.00 L 218.88,893.50" fill="none" stroke="#495057" stroke-width="2" opacity="1.00" stroke-dasharray="2,6" marker-end="url(#arr-495057)"/>
+<path d="M 134.25,409.00 L 134.25,865.00 L 218.88,865.00 L 218.88,893.50" fill="none" stroke="#495057" stroke-width="2" opacity="1.00" stroke-dasharray="2,6" marker-end="url(#arr-495057)"/>
+<path d="M 272.00,813.00 L 272.00,865.00 L 218.88,865.00 L 218.88,893.50" fill="none" stroke="#495057" stroke-width="2" opacity="1.00" stroke-dasharray="2,6" marker-end="url(#arr-495057)"/>
+<text x="272.00" y="87.50" font-size="16" font-family="cursive" fill="#1e1e1e" text-anchor="middle" opacity="1.00"><tspan x="272.00" dy="16.00">Client Request</tspan></text>
+<text x="272.00" y="219.50" font-size="16" font-family="cursive" fill="#1e1e1e" text-anchor="middle" opacity="1.00"><tspan x="272.00" dy="16.00">Per-IP Rate Limiter</tspan><tspan x="272.00" dy="20.00">(Chi Router)</tspan></text>
+<text x="134.25" y="371.50" font-size="16" font-family="cursive" fill="#1e1e1e" text-anchor="middle" opacity="1.00"><tspan x="134.25" dy="16.00">HTTP Handler</tspan></text>
+<text x="272.00" y="505.50" font-size="16" font-family="cursive" fill="#1e1e1e" text-anchor="middle" opacity="1.00"><tspan x="272.00" dy="16.00">Provider Registry</tspan></text>
+<text x="272.00" y="641.50" font-size="16" font-family="cursive" fill="#1e1e1e" text-anchor="middle" opacity="1.00"><tspan x="272.00" dy="16.00">Provider Rate Limiter</tspan></text>
+<text x="272.00" y="775.50" font-size="16" font-family="cursive" fill="#1e1e1e" text-anchor="middle" opacity="1.00"><tspan x="272.00" dy="16.00">Circuit Breaker</tspan></text>
+<text x="567.50" y="926.50" font-size="16" font-family="cursive" fill="#1e1e1e" text-anchor="middle" opacity="1.00"><tspan x="567.50" dy="16.00">Base Provider Client</tspan></text>
+<text x="136.50" y="1078.82" font-size="16" font-family="cursive" fill="#1e1e1e" text-anchor="middle" opacity="1.00"><tspan x="136.50" dy="16.00">Standard Response</tspan><tspan x="136.50" dy="20.00">(JSON Encoding)</tspan></text>
+<text x="588.00" y="1078.82" font-size="16" font-family="cursive" fill="#1e1e1e" text-anchor="middle" opacity="1.00"><tspan x="588.00" dy="16.00">Streaming Response</tspan><tspan x="588.00" dy="20.00">(SSE via channels)</tspan></text>
+<text x="218.88" y="924.50" font-size="16" font-family="cursive" fill="#1e1e1e" text-anchor="middle" opacity="1.00"><tspan x="218.88" dy="16.00">Observability</tspan><tspan x="218.88" dy="20.00">(Prometheus / Grafana / Loki)</tspan></text>
+<text x="218.88" y="902.50" font-size="12" font-family="cursive" fill="#495057" text-anchor="middle" opacity="1.00"><tspan x="218.88" dy="12.00">Monitor</tspan></text>
+<rect x="309.50" y="987.50" width="85.00" height="21.50" rx="3" fill="#ffffff" opacity="1.00"/><text x="352.00" y="989.50" font-size="14" font-family="cursive" fill="#495057" text-anchor="middle" opacity="1.00"><tspan x="352.00" dy="14.00">non-stream</tspan></text>
+<rect x="560.90" y="1018.00" width="54.20" height="21.50" rx="3" fill="#ffffff" opacity="1.00"/><text x="588.00" y="1020.00" font-size="14" font-family="cursive" fill="#495057" text-anchor="middle" opacity="1.00"><tspan x="588.00" dy="14.00">stream</tspan></text>
+<rect x="132.90" y="1138.00" width="54.20" height="21.50" rx="3" fill="#ffffff" opacity="1.00"/><text x="160.00" y="1140.00" font-size="14" font-family="cursive" fill="#495057" text-anchor="middle" opacity="1.00"><tspan x="160.00" dy="14.00">200 OK</tspan></text>
+<rect x="557.50" y="1138.00" width="85.00" height="21.50" rx="3" fill="#ffffff" opacity="1.00"/><text x="600.00" y="1140.00" font-size="14" font-family="cursive" fill="#495057" text-anchor="middle" opacity="1.00"><tspan x="600.00" dy="14.00">SSE chunks</tspan></text>
+</svg>

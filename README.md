@@ -9,7 +9,7 @@ Built in Go, this is a  project demonstrating production-ready backend patterns,
 
 ## 2. Architecture Diagram
 
-<img width="1261" height="713" alt="image" src="https://github.com/user-attachments/assets/7158fff4-094f-4a74-9c32-a5e8ad3db3b4" />
+<img width="600" alt="Architecture diagram: Client Request flows through the Per-IP Rate Limiter (Chi Router), HTTP Handler, Provider Registry, Provider Rate Limiter, and Circuit Breaker to the Base Provider Client, which returns either a Standard (JSON) or Streaming (SSE) response back to the client. The Rate Limiter, HTTP Handler, and Circuit Breaker all report to Observability (Prometheus / Grafana / Loki)." src="docs/architecture.png" />
 
 
 ```text

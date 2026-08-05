@@ -1,10 +1,13 @@
-.PHONY: build run test clean docker-up docker-down k6-smoke k6-stress k6-rate-limit hash-key migrate-up migrate-down migrate-status
+.PHONY: build run web test clean docker-up docker-down k6-smoke k6-stress k6-rate-limit hash-key migrate-up migrate-down migrate-status
 
 build:
 	go build -o bin/gateway.exe ./cmd/gateway
 
 run:
 	go run ./cmd/gateway --config configs/gateway.yaml
+
+web:
+	npm --prefix web run dev
 
 test:
 	go test ./... -v -count=1 -race
