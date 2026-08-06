@@ -1,7 +1,6 @@
 //Request handling for all providers
 package models
 
-// ChatCompletionRequest represents the OpenAI-compatible chat completion request.
 type ChatCompletionRequest struct {
 	Model       string    `json:"model"`
 	Messages    []Message `json:"messages"`
@@ -11,13 +10,11 @@ type ChatCompletionRequest struct {
 	Provider    string    `json:"provider"`
 }
 
-// Message represents a single message in the chat completion request.
 type Message struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
 }
 
-// Role constants for chat messages.
 const (
 	RoleUser      = "user"
 	RoleAssistant = "assistant"
