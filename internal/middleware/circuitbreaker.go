@@ -40,12 +40,10 @@ func NewCircuitBreakerProvider(p provider.Provider, cfg config.CircuitBreakerCon
 	}
 }
 
-// Name delegates to the wrapped provider.
 func (c *CircuitBreakerProvider) Name() string {
 	return c.wrapped.Name()
 }
 
-// ChatCompletion runs the request through the circuit breaker.
 func (c *CircuitBreakerProvider) ChatCompletion(ctx context.Context, req *models.ChatCompletionRequest) (*models.ChatCompletionResponse, error) {
 	done, err := c.cb.Allow()
 	if err != nil {
@@ -64,9 +62,7 @@ func (c *CircuitBreakerProvider) ChatCompletion(ctx context.Context, req *models
 	return resp, nil
 }
 
-// ChatCompletionStream runs the streaming request through the circuit breaker.
 func (c *CircuitBreakerProvider) ChatCompletionStream(ctx context.Context, req *models.ChatCompletionRequest) (<-chan *models.StreamChunk, <-chan error) {
-	// Check if the circuit allows the request.
 	done, err := c.cb.Allow()
 	if err != nil {
 		ctxutil.Logger(ctx).Warn("circuit breaker denied request",
@@ -88,7 +84,6 @@ func (c *CircuitBreakerProvider) ChatCompletionStream(ctx context.Context, req *
 	// Call the real provider.
 	chunks, errCh := c.wrapped.ChatCompletionStream(ctx, req)
 
-	// Create proxy channels to intercept the stream outcome.
 	proxyChunks := make(chan *models.StreamChunk, 10)
 	proxyErr := make(chan error, 1)
 
@@ -116,7 +111,6 @@ func (c *CircuitBreakerProvider) ChatCompletionStream(ctx context.Context, req *
 	return proxyChunks, proxyErr
 }
 
-// ListModels runs the list call through the circuit breaker.
 func (c *CircuitBreakerProvider) ListModels(ctx context.Context) ([]models.ModelInfo, error) {
 	done, err := c.cb.Allow()
 	if err != nil {
@@ -128,19 +122,17 @@ func (c *CircuitBreakerProvider) ListModels(ctx context.Context) ([]models.Model
 	}
 
 	result, err := c.wrapped.ListModels(ctx)
-	done(err) // report outcome to gobreaker
+	done(err)
 	if err != nil {
 		return nil, err
 	}
 	return result, nil
 }
 
-// HealthCheck delegates directly — we don't want the health probe to trip the breaker.
 func (c *CircuitBreakerProvider) HealthCheck(ctx context.Context) error {
 	return c.wrapped.HealthCheck(ctx)
 }
 
-// wrapCBError returns a descriptive error depending on the circuit breaker state.
 func wrapCBError(providerName string, err error) error {
 	if err == gobreaker.ErrOpenState {
 		return fmt.Errorf("provider %s: circuit breaker is open — upstream is unavailable", providerName)

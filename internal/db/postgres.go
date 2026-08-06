@@ -15,7 +15,6 @@ type Pool struct {
 	*pgxpool.Pool
 }
 
-// Connect opens a PostgreSQL pool and verifies connectivity with Ping.
 func Connect(ctx context.Context, cfg config.DatabaseConfig) (*Pool, error) {
 	if !cfg.Configured() {
 		return nil, fmt.Errorf("db: database is not configured")
@@ -46,7 +45,6 @@ func Connect(ctx context.Context, cfg config.DatabaseConfig) (*Pool, error) {
 	return &Pool{Pool: pool}, nil
 }
 
-// Close shuts down the connection pool.
 func (p *Pool) Close() {
 	if p != nil && p.Pool != nil {
 		p.Pool.Close()
