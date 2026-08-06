@@ -36,3 +36,7 @@ bin/
 plan/
 
 postman/llmgateway.postman_environment.json
+
+# Frontend
+web/node_modules/
+web/dist/

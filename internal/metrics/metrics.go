@@ -3,6 +3,7 @@ package metrics
 
 import (
 	"net/http"
+	"sync"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -65,17 +66,23 @@ var (
 	)
 )
 
+// initOnce guarantees metrics are registered exactly once, even when multiple
+// app instances are constructed in the same process (e.g. in tests).
+var initOnce sync.Once
+
 // Init registers all metrics with the default Prometheus registry.
 // Must be called once at startup before the HTTP server starts.
 func Init() {
-	prometheus.MustRegister(
-		HTTPRequestsTotal,
-		HTTPRequestDuration,
-		HTTPInFlightRequests,
-		ProviderRequestsTotal,
-		ProviderRequestDuration,
-		ProviderTokensTotal,
-	)
+	initOnce.Do(func() {
+		prometheus.MustRegister(
+			HTTPRequestsTotal,
+			HTTPRequestDuration,
+			HTTPInFlightRequests,
+			ProviderRequestsTotal,
+			ProviderRequestDuration,
+			ProviderTokensTotal,
+		)
+	})
 }
 
 // Handler returns the Prometheus HTTP handler for the /metrics endpoint.

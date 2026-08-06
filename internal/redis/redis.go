@@ -36,7 +36,6 @@ func New(addr, password string, db int) (*Client, error) {
 	return &Client{RDB: rdb}, nil
 }
 
-// Close shuts down the Redis connection pool.
 func (c *Client) Close() error {
 	return c.RDB.Close()
 }

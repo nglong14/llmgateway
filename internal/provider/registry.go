@@ -7,7 +7,6 @@ import (
 	"sync"
 )
 
-// Maps model names/prefixes to providers
 type Registry struct {
 	mu        sync.RWMutex
 	providers map[string]Provider
@@ -35,7 +34,6 @@ func (r *Registry) Register(p Provider, prefixes ...string) {
 	}
 }
 
-// Finds the provider with the following priority: explicit provider -> prefix -> error
 func (r *Registry) Resolve(model, explicitProvider string) (Provider, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
