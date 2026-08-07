@@ -106,7 +106,12 @@ td:last-child { text-align: right; }
 .try-panel { margin-top: 1.25rem; }
 .icon-button { color: var(--muted); background: transparent; font-size: 1.5rem; padding: .2rem .5rem; }
 .try-actions { display: flex; align-items: end; justify-content: space-between; gap: 1rem; margin-top: .9rem; }
+.try-fields { display: flex; flex-wrap: wrap; align-items: end; gap: 1rem; }
 .token-field { width: 140px; }
+.check-field { display: inline-flex; align-items: center; gap: .5rem; color: #d9dfeb; cursor: pointer; }
+.check-field input { width: auto; margin: 0; accent-color: var(--accent); }
+.primary.stop { background: var(--danger); }
+.primary.stop:hover { background: #ff7b81; }
 .response { margin-top: 1.25rem; padding: 1.2rem; background: #0b0f17; border: 1px solid var(--border); border-radius: 10px; }
 .response-label { color: #8d82f5; text-transform: uppercase; letter-spacing: .1em; font-size: .68rem; font-weight: 700; margin-bottom: .7rem; }
 .response p { color: #dce3ee; white-space: pre-wrap; line-height: 1.6; }
