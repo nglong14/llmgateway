@@ -1,5 +1,5 @@
-import { type FormEvent, useCallback, useEffect, useState } from 'react'
-import { ApiError, apiRequest, getActiveApiKey, setActiveApiKey } from '../api/client'
+import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react'
+import { ApiError, apiRequest, getActiveApiKey, setActiveApiKey, streamChatCompletion } from '../api/client'
 
 interface Model {
   id: string
@@ -35,11 +35,25 @@ export function ModelsPage() {
   const [selected, setSelected] = useState<Model | null>(null)
   const [prompt, setPrompt] = useState('')
   const [maxTokens, setMaxTokens] = useState(512)
+  const [temperature, setTemperature] = useState('')
+  const [stream, setStream] = useState(true)
   const [reply, setReply] = useState<ChatResponse | null>(null)
   const [error, setError] = useState('')
   const [tryError, setTryError] = useState('')
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [streaming, setStreaming] = useState(false)
+  const [streamedText, setStreamedText] = useState('')
+  const [streamFinish, setStreamFinish] = useState('')
+  const [streamDone, setStreamDone] = useState(false)
+  const abortRef = useRef<AbortController | null>(null)
+  const tryPanelRef = useRef<HTMLElement | null>(null)
+
+  useEffect(() => {
+    if (selected) {
+      tryPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }, [selected])
 
   const loadModels = useCallback(async (key: string) => {
     if (!key) return
@@ -72,23 +86,64 @@ export function ModelsPage() {
     setPrompt('')
     setReply(null)
     setTryError('')
+    setStreamedText('')
+    setStreamFinish('')
+    setStreamDone(false)
+  }
+
+  function stopStreaming() {
+    abortRef.current?.abort()
   }
 
   async function tryModel(event: FormEvent) {
     event.preventDefault()
-    if (!selected) return
-    setSubmitting(true)
+    if (!selected || streaming) return
+    const request: Record<string, unknown> = {
+      model: selected.id,
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: maxTokens,
+      stream,
+    }
+    if (temperature.trim() !== '') {
+      const value = Number(temperature)
+      if (!Number.isNaN(value)) request.temperature = value
+    }
+
     setTryError('')
     setReply(null)
+    setStreamedText('')
+    setStreamFinish('')
+    setStreamDone(false)
+
+    if (stream) {
+      const controller = new AbortController()
+      abortRef.current = controller
+      setStreaming(true)
+      try {
+        for await (const chunk of streamChatCompletion('/v1/chat/completions', {
+          method: 'POST',
+          body: JSON.stringify(request),
+        }, apiKey, controller.signal)) {
+          const content = chunk.choices?.[0]?.delta?.content ?? ''
+          if (content) setStreamedText((previous) => previous + content)
+          const finish = chunk.choices?.[0]?.finish_reason
+          if (finish) setStreamFinish(finish)
+        }
+      } catch (requestError) {
+        if (!controller.signal.aborted) setTryError(friendlyError(requestError))
+      } finally {
+        abortRef.current = null
+        setStreaming(false)
+        setStreamDone(true)
+      }
+      return
+    }
+
+    setSubmitting(true)
     try {
       const result = await apiRequest<ChatResponse>('/v1/chat/completions', {
         method: 'POST',
-        body: JSON.stringify({
-          model: selected.id,
-          messages: [{ role: 'user', content: prompt }],
-          max_tokens: maxTokens,
-          stream: false,
-        }),
+        body: JSON.stringify(request),
       }, apiKey)
       setReply(result)
     } catch (requestError) {
@@ -132,13 +187,19 @@ export function ModelsPage() {
       </section>
 
       {selected && (
-        <section className="card try-panel">
+        <section className="card try-panel" ref={tryPanelRef}>
           <div className="section-heading"><div><div className="eyebrow">Try it</div><h2>{selected.id}</h2></div><button className="icon-button" onClick={() => setSelected(null)} aria-label="Close">×</button></div>
           <form onSubmit={tryModel}>
             <label>Prompt<textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} rows={5} placeholder="Ask this model anything…" required /></label>
             <div className="try-actions">
-              <label className="token-field">Max tokens<input type="number" min={1} max={8192} value={maxTokens} onChange={(event) => setMaxTokens(Number(event.target.value))} /></label>
-              <button className="primary" disabled={submitting}>{submitting ? 'Sending…' : 'Send request'}</button>
+              <div className="try-fields">
+                <label className="token-field">Max tokens<input type="number" min={1} max={8192} value={maxTokens} onChange={(event) => setMaxTokens(Number(event.target.value))} /></label>
+                <label className="token-field">Temperature<input type="number" min={0} max={2} step={0.1} value={temperature} onChange={(event) => setTemperature(event.target.value)} placeholder="auto" /></label>
+                <label className="check-field"><input type="checkbox" checked={stream} onChange={(event) => setStream(event.target.checked)} />Stream</label>
+              </div>
+              {streaming
+                ? <button className="primary stop" type="button" onClick={stopStreaming}>Stop</button>
+                : <button className="primary" disabled={submitting}>{submitting ? 'Sending…' : 'Send request'}</button>}
             </div>
           </form>
           {tryError && <div className="alert error">{tryError}</div>}
@@ -149,6 +210,15 @@ export function ModelsPage() {
               <div className="response-meta">
                 <span>Finish: {reply.choices[0]?.finish_reason || 'unknown'}</span>
                 {reply.usage && <span>Tokens: {reply.usage.prompt_tokens} prompt + {reply.usage.completion_tokens} completion = {reply.usage.total_tokens}</span>}
+              </div>
+            </div>
+          )}
+          {!reply && (streamedText || streaming || streamDone) && (
+            <div className="response">
+              <div className="response-label">Assistant response</div>
+              <p>{streamedText || (streaming ? 'Waiting for response…' : 'No content returned.')}</p>
+              <div className="response-meta">
+                {streaming ? <span>Streaming…</span> : <span>Finish: {streamFinish || 'stream'}</span>}
               </div>
             </div>
           )}
