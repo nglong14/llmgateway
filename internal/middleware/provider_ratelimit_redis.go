@@ -1,4 +1,3 @@
-// Package middleware — Redis-backed distributed per-provider rate limiter.
 package middleware
 
 import (

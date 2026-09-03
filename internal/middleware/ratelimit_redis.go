@@ -1,4 +1,3 @@
-// Package middleware — Redis-backed distributed token bucket rate limiter.
 package middleware
 
 import (
@@ -90,7 +89,7 @@ func (rl *RedisRateLimiter) Handler(next http.Handler) http.Handler {
 
 // allow executes the token bucket Lua script against Redis.
 func (rl *RedisRateLimiter) allow(ctx context.Context, key string) (bool, error) {
-	now := float64(time.Now().UnixMicro()) / 1e6 // seconds with microsecond precision
+	now := float64(time.Now().UnixMicro()) / 1e6
 
 	result, err := tokenBucketScript.Run(ctx, rl.rdb,
 		[]string{"rate:" + key},
@@ -105,5 +104,4 @@ func (rl *RedisRateLimiter) allow(ctx context.Context, key string) (bool, error)
 	return result == 1, nil
 }
 
-// Stop is a no-op for the Redis rate limiter (no background goroutines).
 func (rl *RedisRateLimiter) Stop() {}

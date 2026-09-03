@@ -10,7 +10,6 @@ import (
 )
 
 var (
-	// HTTPRequestsTotal counts every HTTP request by method, path, and status code.
 	HTTPRequestsTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "gateway_http_requests_total",
@@ -19,7 +18,6 @@ var (
 		[]string{"method", "path", "status"},
 	)
 
-	// HTTPRequestDuration tracks the latency distribution of HTTP requests.
 	HTTPRequestDuration = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "gateway_http_request_duration_seconds",
@@ -29,7 +27,6 @@ var (
 		[]string{"method", "path"},
 	)
 
-	// HTTPInFlightRequests tracks how many requests are currently in-flight.
 	HTTPInFlightRequests = prometheus.NewGauge(
 		prometheus.GaugeOpts{
 			Name: "gateway_http_in_flight_requests",
@@ -37,7 +34,6 @@ var (
 		},
 	)
 
-	// ProviderRequestsTotal counts requests per provider and outcome.
 	ProviderRequestsTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "gateway_provider_requests_total",
@@ -46,7 +42,6 @@ var (
 		[]string{"provider", "method", "status"},
 	)
 
-	// ProviderRequestDuration tracks per-provider latency.
 	ProviderRequestDuration = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "gateway_provider_request_duration_seconds",
@@ -56,7 +51,6 @@ var (
 		[]string{"provider", "method"},
 	)
 
-	// ProviderTokensTotal tracks token usage from provider responses.
 	ProviderTokensTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "gateway_provider_tokens_total",
@@ -66,12 +60,8 @@ var (
 	)
 )
 
-// initOnce guarantees metrics are registered exactly once, even when multiple
-// app instances are constructed in the same process (e.g. in tests).
 var initOnce sync.Once
 
-// Init registers all metrics with the default Prometheus registry.
-// Must be called once at startup before the HTTP server starts.
 func Init() {
 	initOnce.Do(func() {
 		prometheus.MustRegister(
